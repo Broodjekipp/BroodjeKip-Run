@@ -1,6 +1,9 @@
 """
 TODO:
  - App search
+ - Execute command (with ">")
+ - System commands
+ - Calculator: unit converter
  - More search engines
  - Scrollable results list
  - Open with hotkey
@@ -11,7 +14,6 @@ TODO:
     - All commands: Help           (-h)
  - Settings .json file
  - Subtext in update_results()
- - App label in update_results(), e.g. "[DIR]"
 """
 
 import customtkinter as ctk
@@ -59,9 +61,17 @@ search_bar.pack(fill="both")
 
 results_frame = ctk.CTkScrollableFrame(content, fg_color=BG, height=200)
 
-_resize_job = None
 last_input = ""
+_resize_job = None
 _search_job = None
+
+
+def on_enter():
+    global entered
+    entered = True
+
+
+root.bind("<Return>", lambda e: on_enter())
 
 
 def _do_resize():
@@ -69,7 +79,7 @@ def _do_resize():
     root.geometry(f"{WIDTH}x{root.winfo_reqheight()}")
 
 
-def update_results(lines, files=False, scrollable=False, appid="SYS"):
+def update_results(lines, files=False, scrollable=False, appid=""):
     global _resize_job, results_frame
 
     current_scrollable = isinstance(results_frame, ctk.CTkScrollableFrame)
@@ -99,7 +109,7 @@ def update_results(lines, files=False, scrollable=False, appid="SYS"):
         else:
             lbl = ctk.CTkLabel(
                 results_frame,
-                text=f"[{appid}]: {line}",
+                text=f"{"["if appid else ""}{appid}{"]: "if appid else ""}{line}",
                 font=(FONT, SECONDARY_FONT_HEIGHT),
                 text_color=TEXT,
                 anchor="w",
@@ -129,14 +139,6 @@ def clear_results():
     root.geometry(f"{WIDTH}x{HEIGHT}")
 
 
-def on_enter():
-    global entered
-    entered = True
-
-
-root.bind("<Return>", lambda e: on_enter())
-
-
 def open_file(path):
     if os.path.isfile(path):
         subprocess.Popen(["xdg-open", os.path.dirname(path)], stderr=subprocess.DEVNULL)
@@ -156,6 +158,8 @@ def web_search(query):
 
 
 def file_search(filename):
+    appid = "DIR"
+
     def _search():
         try:
             out = subprocess.check_output(
@@ -174,13 +178,15 @@ def file_search(filename):
         except (subprocess.CalledProcessError, FileNotFoundError):
             results = ["File search not available"]
 
-        root.after(0, lambda: update_results(results, files=True, scrollable=True, appid="DIR"))
+        root.after(
+            0, lambda: update_results(results, files=True, scrollable=True, appid=appid)
+        )
 
     if filename:
-        update_results("Searching...", appid="DIR")
+        update_results("Searching...", appid=appid)
         Thread(target=_search, daemon=True).start()
     else:
-        update_results("Type filename...", appid="DIR")
+        update_results("Type filename...", appid=appid)
 
 
 def parse_input(input):
@@ -222,7 +228,7 @@ def main_loop():
         elif input_changed:
             update_results("Press ENTER to search", appid="WEB")
 
-    elif command == ">":
+    elif command == "f":
         if input_changed:
             if _search_job:
                 root.after_cancel(_search_job)
