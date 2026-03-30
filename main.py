@@ -69,7 +69,7 @@ def _do_resize():
     root.geometry(f"{WIDTH}x{root.winfo_reqheight()}")
 
 
-def update_results(lines, files=False, scrollable=False):
+def update_results(lines, files=False, scrollable=False, appid="SYS"):
     global _resize_job, results_frame
 
     current_scrollable = isinstance(results_frame, ctk.CTkScrollableFrame)
@@ -99,7 +99,7 @@ def update_results(lines, files=False, scrollable=False):
         else:
             lbl = ctk.CTkLabel(
                 results_frame,
-                text=line,
+                text=f"[{appid}]: {line}",
                 font=(FONT, SECONDARY_FONT_HEIGHT),
                 text_color=TEXT,
                 anchor="w",
@@ -134,6 +134,9 @@ def on_enter():
     entered = True
 
 
+root.bind("<Return>", lambda e: on_enter())
+
+
 def open_file(path):
     if os.path.isfile(path):
         subprocess.Popen(["xdg-open", os.path.dirname(path)], stderr=subprocess.DEVNULL)
@@ -165,19 +168,19 @@ def file_search(filename):
             if files:
                 results = files
             elif dirs:
-                results = ["[DIR]: " + d for d in dirs]
+                results = [d for d in dirs]
             else:
-                results = ["[DIR]: Not found"]
+                results = ["Not found"]
         except (subprocess.CalledProcessError, FileNotFoundError):
-            results = ["[ERR]: File search not available"]
+            results = ["File search not available"]
 
-        root.after(0, lambda: update_results(results, files=True, scrollable=True))
+        root.after(0, lambda: update_results(results, files=True, scrollable=True, appid="DIR"))
 
     if filename:
-        update_results("[DIR]: Searching...")
+        update_results("Searching...", appid="DIR")
         Thread(target=_search, daemon=True).start()
     else:
-        update_results("[DIR]: Type filename...")
+        update_results("Type filename...", appid="DIR")
 
 
 def parse_input(input):
@@ -204,7 +207,7 @@ def main_loop():
     if command == "=":
         if input_changed:
             result = calculator(command_input)
-            update_results(f"[CAL]: {result}")
+            update_results(result, appid="CAL")
         if entered:
             result = calculator(command_input)
             root.clipboard_clear()
@@ -217,7 +220,7 @@ def main_loop():
             web_search(command_input)
             entered = False
         elif input_changed:
-            update_results("[WEB]: Press ENTER to search")
+            update_results("Press ENTER to search", appid="WEB")
 
     elif command == ">":
         if input_changed:
@@ -234,8 +237,6 @@ def main_loop():
 root.geometry(
     f"{WIDTH}x{HEIGHT}+{(root.winfo_screenwidth() - WIDTH) // 2}+{(root.winfo_screenheight() - HEIGHT) // 2}"
 )
-
-root.bind("<Return>", lambda e: on_enter())
 
 
 def force_focus():
