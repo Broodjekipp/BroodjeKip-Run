@@ -11,6 +11,7 @@ TODO:
     - All commands: Help           (-h)
  - Settings .json file
  - Subtext in update_results()
+ - App label in update_results(), e.g. "[DIR]"
 """
 
 import customtkinter as ctk
@@ -179,16 +180,22 @@ def file_search(filename):
         update_results("[DIR]: Type filename...")
 
 
+def parse_input(input):
+    try:
+        command = input[0]
+        command_input = input[1:].strip()
+    except IndexError:
+        command = ""
+        command_input = ""
+
+    return command, command_input
+
+
 def main_loop():
     global entered, last_input, _search_job
     user_input = search_bar.get().strip()
 
-    try:
-        command = user_input[0]
-        command_input = user_input[1:].strip()
-    except IndexError:
-        command = ""
-        command_input = ""
+    command, command_input = parse_input(user_input)
 
     input_changed = user_input != last_input
     if input_changed:
