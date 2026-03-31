@@ -9,7 +9,6 @@ TODO:
     - Web search: Search engine    (-s)
     - Web search: Search website   (-w)
     - All commands: Help           (-h)
- - Settings .json file
  - Subtext in update_results()
 """
 
@@ -26,25 +25,17 @@ import os
 
 CONFIG_PATH = Path.home() / ".config" / "broodjekip-run" / "settings.json"
 json_default = {
-    "colors": {
-        "bg": "#141414",
-        "fg": "#2f2f2f",
-        "text": "#d0d0d0"
-    },
-    "font": {
-        "family": "JetBrains Mono",
-        "size_primary": 20,
-        "size_secondary": 16
-    },
+    "colors": {"bg": "#141414", "fg": "#2f2f2f", "text": "#d0d0d0"},
+    "font": {"family": "JetBrains Mono", "size_primary": 20, "size_secondary": 16},
     "dimensions": {
         "width": 400,
         "search_height": 40,
         "result_height": 40,
-        "scroll_height": 200
+        "scroll_height": 200,
     },
     "hotkey": "<cmd>+<space>",
     "search_engine": "duckduckgo",
-    "search_path": "~"
+    "search_path": "~",
 }
 try:
     with open(CONFIG_PATH) as f:
@@ -73,6 +64,15 @@ SEARCH_ENGINES = {
     "google": "https://google.com/search?q=",
     "duckduckgo": "https://duckduckgo.com/?q=",
     "bing": "https://bing.com/search?q=",
+    "ecosia": "https://ecosia.org/search?q=",
+    "brave": "https://search.brave.com/search?q=",
+    "startpage": "https://startpage.com/search?q=",
+    "perplexity": "https://perplexity.ai/search?q=",
+    "youtube": "https://youtube.com/results?search_query=",
+    "wikipedia": "https://en.wikipedia.org/w/index.php?search=",
+    "reddit": "https://reddit.com/search/?q=",
+    "github": "https://github.com/search?q=",
+    "stackoverflow": "https://stackoverflow.com/search?q=",
 }
 
 entered = False
@@ -217,7 +217,9 @@ def update_results(results, scroll=False, files=False):
                     anchor="w",
                     width=WIDGET_WIDTH,
                 )
-                item.configure(text=truncate_with_ellipsis(result, item, WIDGET_WIDTH - 10))
+                item.configure(
+                    text=truncate_with_ellipsis(result, item, WIDGET_WIDTH - 10)
+                )
             else:
                 item = ctk.CTkLabel(
                     results_frame,
