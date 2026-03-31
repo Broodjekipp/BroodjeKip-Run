@@ -2,14 +2,6 @@
 TODO:
  - App search
  - Calculator: unit converter
- - More search engines
- - Command history
- - Command params: <command> -<param name> <param> <input>
-    - File search: Search paths    (-p)
-    - Web search: Search engine    (-s)
-    - Web search: Search website   (-w)
-    - All commands: Help           (-h)
- - Subtext in update_results()
 """
 
 from urllib.parse import quote as webquote
@@ -21,7 +13,9 @@ import customtkinter as ctk
 import subprocess
 import threading
 import json
+import math
 import os
+import re
 
 CONFIG_PATH = Path.home() / ".config" / "broodjekip-run" / "settings.json"
 json_default = {
@@ -57,7 +51,7 @@ SEARCH_HEIGHT = settings.get("dimensions", {}).get("search_height", 40)
 RESULT_HEIGHT = settings.get("dimensions", {}).get("result_height", 40)
 SCROLL_HEIGHT = settings.get("dimensions", {}).get("scroll_height", 200)
 
-HOTKEY = settings.get("hotkey", "<cmd>+<space>")
+HOTKEY = settings.get("hotkey", "<cmd>+<space>") 
 SEARCH_PATH = Path(settings.get("search_path", "~")).expanduser()
 ENGINE = settings.get("search_engine", "duckduckgo")
 SEARCH_ENGINES = {
@@ -74,6 +68,28 @@ SEARCH_ENGINES = {
     "github": "https://github.com/search?q=",
     "stackoverflow": "https://stackoverflow.com/search?q=",
 }
+MATH_NAMESPACE = {
+    "__builtins__": {},
+    "sqrt": math.sqrt,
+    "factorial": lambda n: math.factorial(int(n)),
+    "log": math.log,
+    "log2": math.log2,
+    "log10": math.log10,
+    "sin": math.sin,
+    "cos": math.cos,
+    "tan": math.tan,
+    "asin": math.asin,
+    "acos": math.acos,
+    "atan": math.atan,
+    "ceil": math.ceil,
+    "floor": math.floor,
+    "abs": abs,
+    "round": round,
+    "pow": pow, 
+    "pi": math.pi,
+    "e": math.e,
+    "tau": math.tau,
+}
 
 entered = False
 search_cooldown = True
@@ -86,7 +102,9 @@ ctk.set_default_color_theme("blue")
 def calculator(expression, update_result=True):
     global entered
     try:
-        result = eval(expression)
+        result = eval(expression, MATH_NAMESPACE)     
+        if callable(result):
+            raise TypeError    
         if update_result:
             update_results(f"= {result}")
         if entered:
@@ -96,27 +114,33 @@ def calculator(expression, update_result=True):
             search_bar.delete(1, "end")
             entered = False
 
-    except (SyntaxError, NameError, ZeroDivisionError):
+    except (SyntaxError, NameError, ZeroDivisionError, TypeError):
         result = "Invalid expression"
         if update_result:
             update_results(result)
 
 
-def web_search(query, update_result):
+def web_search(query, update_result, params):
     global entered
     if entered:
-        webopen(SEARCH_ENGINES[ENGINE] + webquote(query))
+        engine = params.get("s", ENGINE)
+        if "w" in params:
+            url = f"https://{params['w']}/search?q="
+        else:
+            url = SEARCH_ENGINES.get(engine, SEARCH_ENGINES[ENGINE])
+        webopen(url + webquote(query))
         entered = False
     elif update_result:
         update_results("Press ENTER to search...")
 
 
-def file_search(file_input, input_changed):
+def file_search(file_input, input_changed, params):
+    search_path = Path(params.get("p", SEARCH_PATH)).expanduser()
     def _search():
         try:
             results = (
                 subprocess.check_output(
-                    ["locate", "-i", "--regex", f"{SEARCH_PATH}/.*{file_input}"],
+                    ["locate", "-i", "--regex", f"{search_path}/.*{file_input}"],
                     stderr=subprocess.DEVNULL,
                     text=True,
                 )
@@ -164,7 +188,7 @@ def system_command(command):
 def main():
     global last_input, entered
     user_input = search_bar.get()
-    command, command_input = parse_input(user_input)
+    command, command_input, params = parse_input(user_input)
 
     input_changed = last_input != user_input
     if input_changed:
@@ -173,9 +197,9 @@ def main():
     if command == "=":
         calculator(command_input, input_changed)
     elif command == "?":
-        web_search(command_input, input_changed)
+        web_search(command_input, input_changed, params)
     elif command == "f":
-        file_search(command_input, input_changed)
+        file_search(command_input, input_changed, params)
     elif command == ">":
         run_command(command_input, input_changed)
     elif command == "<":
@@ -248,15 +272,22 @@ def open_file(path):
         subprocess.Popen(["xdg-open", path], stderr=subprocess.DEVNULL)
 
 
-def parse_input(input):
-    try:
-        command = input[0]
-        command_input = input[1:].strip()
-    except IndexError:
-        command = ""
-        command_input = ""
+def parse_input(user_input):
+    if not user_input:
+        return "", "", {}
 
-    return command, command_input
+    command = user_input[0]
+    rest = user_input[1:].strip()
+
+    # Extract -flag value pairs
+    params = {}
+    for match in re.finditer(r"-(\w+)\s+(\S+)", rest):
+        params[match.group(1)] = match.group(2)
+
+    # Remove params from the actual input
+    command_input = re.sub(r"-\w+\s+\S+\s*", "", rest).strip()
+
+    return command, command_input, params, 
 
 
 def truncate_with_ellipsis(text, widget, max_width):
