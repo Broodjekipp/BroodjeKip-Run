@@ -1,38 +1,42 @@
 """
 TODO:
  - App search
- - Execute command (with ">")
- - System commands
  - Calculator: unit converter
  - More search engines
- - Scrollable results list
- - Open with hotkey
  - Command history
  - Command params: <command> -<param name> <param> <input>
     - File search: Search paths    (-p)
     - Web search: Search engine    (-s)
+    - Web search: Search website   (-w)
     - All commands: Help           (-h)
  - Settings .json file
  - Subtext in update_results()
 """
 
-import customtkinter as ctk
-from threading import Thread
 from webbrowser import open as webopen
-from urllib.parse import quote
-import subprocess
+from urllib.parse import quote as webquote
+from tkinter.font import Font
+import customtkinter as ctk
 import os
+import threading
+import subprocess
+from pynput import keyboard
 
-BG = "#141414"
-SURFACE = "#2f2f2f"
-TEXT = "#d0d0d0"
-HEIGHT = 40
-WIDTH = 400
+BG_COLOR = "#141414"
+FG_COLOR = "#2f2f2f"
+TEXT_COLOR = "#d0d0d0"
 FONT = "JetBrains Mono"
 FULL_FONT_HEIGHT = 20
 SECONDARY_FONT_HEIGHT = 16
+
+WIDTH = 400
+SEARCH_HEIGHT = 40
+RESULT_HEIGHT = 40
+SCROLL_HEIGHT = 200
+
+HOTKEY = "<cmd>+<space>"
+SEARCH_PATH = os.path.expanduser("~")
 ENGINE = "duckduckgo"
-SEARCH_PATH = "/home/george"
 SEARCH_ENGINES = {
     "google": "https://google.com/search?q=",
     "duckduckgo": "https://duckduckgo.com/?q=",
@@ -40,103 +44,164 @@ SEARCH_ENGINES = {
 }
 
 entered = False
+search_cooldown = True
+last_input = ""
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
-root = ctk.CTk()
-root.configure(fg_color=BG)
-root.title("")
-root.resizable(False, False)
-root.attributes("-topmost", True)
-root.bind("<Escape>", lambda e: root.destroy())
-root.bind("<FocusOut>", lambda e: root.destroy())
-
-content = ctk.CTkFrame(root, fg_color=BG)
-content.pack(fill="both", expand=True)
-
-search_bar = ctk.CTkEntry(
-    content, placeholder_text="Search...", font=(FONT, FULL_FONT_HEIGHT), width=WIDTH
-)
-search_bar.pack(fill="both")
-
-results_frame = ctk.CTkScrollableFrame(content, fg_color=BG, height=200)
-
-last_input = ""
-_resize_job = None
-_search_job = None
 
 
-def on_enter():
+def calculator(expression, update_result=True):
     global entered
-    entered = True
+    try:
+        result = eval(expression)
+        if update_result:
+            update_results(f"= {result}")
+        if entered:
+            root.clipboard_clear()
+            root.clipboard_append(result)
+            root.update()
+            search_bar.delete(1, "end")
+            entered = False
+
+    except (SyntaxError, NameError, ZeroDivisionError):
+        result = "Invalid expression"
+        if update_result:
+            update_results(result)
 
 
-root.bind("<Return>", lambda e: on_enter())
+def web_search(query, update_result):
+    global entered
+    if entered:
+        webopen(SEARCH_ENGINES[ENGINE] + webquote(query))
+        entered = False
+    elif update_result:
+        update_results("Press ENTER to search...")
 
 
-def _do_resize():
-    root.update_idletasks()
-    root.geometry(f"{WIDTH}x{root.winfo_reqheight()}")
+def file_search(file_input, input_changed):
+    def _search():
+        try:
+            results = (
+                subprocess.check_output(
+                    ["locate", "-i", "--regex", f"{SEARCH_PATH}/.*{file_input}"],
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                )
+                .strip()
+                .splitlines()
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            results = None
+        if file_input != parse_input(search_bar.get())[1]:
+            return
+        root.after(0, lambda: update_results(results, files=True, scroll=True))
 
-
-def update_results(lines, files=False, scrollable=False, appid=""):
-    global _resize_job, results_frame
-
-    current_scrollable = isinstance(results_frame, ctk.CTkScrollableFrame)
-    if current_scrollable != scrollable:
-        results_frame.destroy()
-        if scrollable:
-            results_frame = ctk.CTkScrollableFrame(content, fg_color=BG, height=200)
+    if input_changed:   
+        if file_input:
+            update_results("Searching...")
+            results = []
+            threading.Thread(target=_search, daemon=True).start()
         else:
-            results_frame = ctk.CTkFrame(content, fg_color=BG)
+            update_results("Type the filename...")
+
+
+def run_command(command, update_result):
+    global entered
+    if entered:
+        subprocess.Popen(["kitty", "--", "bash", "-c", f"{command}; exec bash"])
+        entered = False
+    if update_result:
+        update_results("Type ENTER to run...")
+
+
+def system_command(command):
+    global entered
+    if entered:
+        if command in ("r", "restart"):
+            os.system("systemctl reboot")
+        elif command in ("s", "shutdown"):
+            os.system("systemctl poweroff")
+        elif command in ("l", "logout"):
+            os.system("loginctl terminate-session $XDG_SESSION_ID")
+        else:
+            update_results("Command not found.")
+        entered = False
+
+
+def main():
+    global last_input, entered
+    user_input = search_bar.get()
+    command, command_input = parse_input(user_input)
+
+    input_changed = last_input != user_input
+    if input_changed:
+        last_input = user_input
+
+    if command == "=":
+        calculator(command_input, input_changed)
+    elif command == "?":
+        web_search(command_input, input_changed)
+    elif command == "f":
+        file_search(command_input, input_changed)
+    elif command == ">":
+        run_command(command_input, input_changed)
+    elif command == "<":
+        system_command(command_input)
+
+    root.after(50, main)
+
+
+def update_results(results, scroll=False, files=False):
+    global results_frame
+
     for widget in results_frame.winfo_children():
         widget.destroy()
+    root.geometry(f"{WIDTH}x{SEARCH_HEIGHT}")
 
-    if not scrollable:
-        lines = [lines]
+    if results is None:
+        return
 
-    for line in lines[:50]:
-        if files:
-            btn = ctk.CTkButton(
-                results_frame,
-                text=line,
-                font=(FONT, SECONDARY_FONT_HEIGHT),
-                text_color=TEXT,
-                anchor="w",
-                command=lambda p=line: open_file(p),
-            )
-            btn.pack(fill="x", padx=8)
-        else:
-            lbl = ctk.CTkLabel(
-                results_frame,
-                text=f"{"["if appid else ""}{appid}{"]: "if appid else ""}{line}",
-                font=(FONT, SECONDARY_FONT_HEIGHT),
-                text_color=TEXT,
-                anchor="w",
-            )
-            lbl.pack(fill="x", padx=8)
+    if isinstance(results, list) and len(results) == 0:
+        results = ["No files found."]
 
-    if lines:
-        results_frame.pack(fill="x")
+    results_frame.destroy()
+    if scroll:
+        results_frame = ctk.CTkScrollableFrame(
+            result_frame_frame,
+            fg_color=BG_COLOR,
+            height=SCROLL_HEIGHT,
+        )
+        results_frame.pack(fill="both", expand=True)
+        root.geometry(f"{WIDTH}x{SEARCH_HEIGHT+SCROLL_HEIGHT}")
+        for result in results[:50]:
+            if files:
+                item = ctk.CTkButton(
+                    results_frame,
+                    text="",
+                    font=(FONT, SECONDARY_FONT_HEIGHT),
+                    hover_color=FG_COLOR,
+                    command=lambda path=result: open_file(path),
+                    anchor="w",
+                    width=WIDTH,
+                )
+                item.configure(text=truncate_with_ellipsis(result, item, WIDTH - 10))
+            else:
+                item = ctk.CTkLabel(
+                    results_frame,
+                    text=result,
+                    font=(FONT, SECONDARY_FONT_HEIGHT),
+                    anchor="w",
+                )
+            item.pack(fill="x")
     else:
-        results_frame.pack_forget()
-
-    if _resize_job:
-        root.after_cancel(_resize_job)
-    _resize_job = root.after(50, _do_resize)
-
-
-def clear_results():
-    global _resize_job
-    for widget in results_frame.winfo_children():
-        widget.destroy()
-    results_frame.pack_forget()
-    if _resize_job:
-        root.after_cancel(_resize_job)
-    _resize_job = root.after(50, lambda: root.geometry(f"{WIDTH}x{HEIGHT}"))
-    for widget in results_frame.winfo_children():
-        widget.destroy()
-    root.geometry(f"{WIDTH}x{HEIGHT}")
+        results_frame = ctk.CTkFrame(result_frame_frame, fg_color=BG_COLOR)
+        results_frame.pack(fill="both", expand=True)
+        root.geometry(f"{WIDTH}x{SEARCH_HEIGHT+RESULT_HEIGHT}")
+        item = ctk.CTkLabel(
+            results_frame, text=str(results), font=(FONT, SECONDARY_FONT_HEIGHT), anchor="w"
+        )
+        item.pack(fill="x")
 
 
 def open_file(path):
@@ -144,49 +209,6 @@ def open_file(path):
         subprocess.Popen(["xdg-open", os.path.dirname(path)], stderr=subprocess.DEVNULL)
     else:
         subprocess.Popen(["xdg-open", path], stderr=subprocess.DEVNULL)
-
-
-def calculator(expr):
-    try:
-        return eval(expr)
-    except (SyntaxError, NameError, ZeroDivisionError):
-        return "Invalid expression"
-
-
-def web_search(query):
-    webopen(SEARCH_ENGINES[ENGINE] + quote(query))
-
-
-def file_search(filename):
-    appid = "DIR"
-
-    def _search():
-        try:
-            out = subprocess.check_output(
-                ["locate", "-i", "--", filename], stderr=subprocess.DEVNULL, text=True
-            )
-            lines = out.strip().splitlines()
-            files = [l for l in lines if os.path.isfile(l)]
-            dirs = [l for l in lines if os.path.isdir(l)]
-
-            if files:
-                results = files
-            elif dirs:
-                results = [d for d in dirs]
-            else:
-                results = ["Not found"]
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            results = ["File search not available"]
-
-        root.after(
-            0, lambda: update_results(results, files=True, scrollable=True, appid=appid)
-        )
-
-    if filename:
-        update_results("Searching...", appid=appid)
-        Thread(target=_search, daemon=True).start()
-    else:
-        update_results("Type filename...", appid=appid)
 
 
 def parse_input(input):
@@ -200,49 +222,32 @@ def parse_input(input):
     return command, command_input
 
 
-def main_loop():
-    global entered, last_input, _search_job
-    user_input = search_bar.get().strip()
 
-    command, command_input = parse_input(user_input)
-
-    input_changed = user_input != last_input
-    if input_changed:
-        last_input = user_input
-
-    if command == "=":
-        if input_changed:
-            result = calculator(command_input)
-            update_results(result, appid="CAL")
-        if entered:
-            result = calculator(command_input)
-            root.clipboard_clear()
-            root.clipboard_append(str(result))
-            root.update()
-            entered = False
-
-    elif command == "?":
-        if entered:
-            web_search(command_input)
-            entered = False
-        elif input_changed:
-            update_results("Press ENTER to search", appid="WEB")
-
-    elif command == "f":
-        if input_changed:
-            if _search_job:
-                root.after_cancel(_search_job)
-            _search_job = root.after(300, lambda: file_search(command_input))
-
-    elif input_changed:
-        clear_results()
-
-    root.after(10, main_loop)
+def truncate_with_ellipsis(text, widget, max_width):
+    f = Font(font=widget.cget("font"))
+    
+    if f.measure(text) <= max_width:
+        return text
+    
+    ellipsis = "..."
+    while text and f.measure(ellipsis + text) + 30 > max_width: 
+        text = text[1:]
+    
+    return ellipsis + text
 
 
-root.geometry(
-    f"{WIDTH}x{HEIGHT}+{(root.winfo_screenwidth() - WIDTH) // 2}+{(root.winfo_screenheight() - HEIGHT) // 2}"
-)
+def center_window(window):
+    window.update_idletasks()
+    width = window.winfo_width()
+    height = window.winfo_height()
+    x = (window.winfo_screenwidth() - width) // 2
+    y = (window.winfo_screenheight() - height) // 2
+    window.geometry(f"{width}x{height}+{x}+{y}")
+
+
+def on_enter():
+    global entered
+    entered = True
 
 
 def force_focus():
@@ -250,6 +255,77 @@ def force_focus():
     search_bar.focus_force()
 
 
+root = ctk.CTk()
+root.configure(fg_color=BG_COLOR)
+root.resizable(False, False)
+root.geometry(f"{WIDTH}x{SEARCH_HEIGHT}")
+root.title("BroodjeKip Run")
+root.attributes("-topmost", True)
+center_window(root)
+root.bind("<Escape>", lambda e: root.withdraw())
+root.bind("<Return>", lambda e: on_enter())
+root.bind("<FocusOut>", lambda e: root.withdraw())
 root.after(50, force_focus)
-main_loop()
+
+content_frame = ctk.CTkFrame(root, fg_color=BG_COLOR)
+content_frame.pack(fill="both", expand=True)
+
+search_bar = ctk.CTkEntry(
+    content_frame,
+    placeholder_text="Type...",
+    font=(FONT, FULL_FONT_HEIGHT),
+    height=SEARCH_HEIGHT,
+    width=WIDTH,
+)
+search_bar.pack(fill="x", expand=True)
+result_frame_frame = ctk.CTkFrame(content_frame, fg_color=BG_COLOR)
+result_frame_frame.pack(fill="both", expand=True, anchor="w")
+results_frame = ctk.CTkFrame(result_frame_frame, fg_color=BG_COLOR)
+results_frame.pack(fill="both", expand=True, anchor="w")
+
+root.after(50, main)
+
+combo = {keyboard.Key.cmd, keyboard.KeyCode.from_char(" ")}
+current = set()
+
+
+def hide_window():
+    root.unbind("<Return>")
+    root.withdraw()
+
+
+def on_press(key):
+    print("DEBUG: show window")
+    current.add(key)
+    if all(k in current for k in combo):
+        root.after(0, show_window)
+
+
+def on_release(key):
+    current.discard(key)
+
+
+def show_window():
+    root.unbind("<FocusOut>")
+    root.deiconify()
+    center_window(root)
+    search_bar.delete(0, "end")
+    update_results(None)
+    force_focus()
+    root.bind("<FocusOut>", lambda e: root.withdraw())
+
+
+def for_canonical(f):
+    return lambda k: f(listener.canonical(k))
+
+
+hotkey = keyboard.HotKey(
+    keyboard.HotKey.parse(HOTKEY), lambda: root.after(0, show_window)
+)
+listener = keyboard.Listener(
+    on_press=for_canonical(hotkey.press), on_release=for_canonical(hotkey.release)
+)
+listener.daemon = True
+listener.start()
+
 root.mainloop()
