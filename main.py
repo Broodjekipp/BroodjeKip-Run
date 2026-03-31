@@ -13,30 +13,62 @@ TODO:
  - Subtext in update_results()
 """
 
-from webbrowser import open as webopen
 from urllib.parse import quote as webquote
+from webbrowser import open as webopen
 from tkinter.font import Font
-import customtkinter as ctk
-import os
-import threading
-import subprocess
 from pynput import keyboard
+from pathlib import Path
+import customtkinter as ctk
+import subprocess
+import threading
+import json
+import os
 
-BG_COLOR = "#141414"
-FG_COLOR = "#2f2f2f"
-TEXT_COLOR = "#d0d0d0"
-FONT = "JetBrains Mono"
-FULL_FONT_HEIGHT = 20
-SECONDARY_FONT_HEIGHT = 16
+CONFIG_PATH = Path.home() / ".config" / "broodjekip-run" / "settings.json"
+json_default = {
+    "colors": {
+        "bg": "#141414",
+        "fg": "#2f2f2f",
+        "text": "#d0d0d0"
+    },
+    "font": {
+        "family": "JetBrains Mono",
+        "size_primary": 20,
+        "size_secondary": 16
+    },
+    "dimensions": {
+        "width": 400,
+        "search_height": 40,
+        "result_height": 40,
+        "scroll_height": 200
+    },
+    "hotkey": "<cmd>+<space>",
+    "search_engine": "duckduckgo",
+    "search_path": "~"
+}
+try:
+    with open(CONFIG_PATH) as f:
+        settings = json.load(f)
+except FileNotFoundError:
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(json_default, f)
+    with open(CONFIG_PATH) as f:
+        settings = json.load(f)
 
-WIDTH = 400
-SEARCH_HEIGHT = 40
-RESULT_HEIGHT = 40
-SCROLL_HEIGHT = 200
+BG_COLOR = settings.get("colors", {}).get("bg", "#141414")
+FG_COLOR = settings.get("colors", {}).get("fg", "#2f2f2f")
+TEXT_COLOR = settings.get("colors", {}).get("text", "#d0d0d0")
+FONT = settings.get("font", {}).get("family", "DejaVu Sans Mono")
+FULL_FONT_HEIGHT = settings.get("font", {}).get("size_primary", 20)
+SECONDARY_FONT_HEIGHT = settings.get("font", {}).get("size_secondary", 16)
+WIDGET_WIDTH = settings.get("dimensions", {}).get("width", 400)
+SEARCH_HEIGHT = settings.get("dimensions", {}).get("search_height", 40)
+RESULT_HEIGHT = settings.get("dimensions", {}).get("result_height", 40)
+SCROLL_HEIGHT = settings.get("dimensions", {}).get("scroll_height", 200)
 
-HOTKEY = "<cmd>+<space>"
-SEARCH_PATH = os.path.expanduser("~")
-ENGINE = "duckduckgo"
+HOTKEY = settings.get("hotkey", "<cmd>+<space>")
+SEARCH_PATH = Path(settings.get("search_path", "~")).expanduser()
+ENGINE = settings.get("search_engine", "duckduckgo")
 SEARCH_ENGINES = {
     "google": "https://google.com/search?q=",
     "duckduckgo": "https://duckduckgo.com/?q=",
@@ -97,7 +129,7 @@ def file_search(file_input, input_changed):
             return
         root.after(0, lambda: update_results(results, files=True, scroll=True))
 
-    if input_changed:   
+    if input_changed:
         if file_input:
             update_results("Searching...")
             results = []
@@ -157,7 +189,7 @@ def update_results(results, scroll=False, files=False):
 
     for widget in results_frame.winfo_children():
         widget.destroy()
-    root.geometry(f"{WIDTH}x{SEARCH_HEIGHT}")
+    root.geometry(f"{WIDGET_WIDTH}x{SEARCH_HEIGHT}")
 
     if results is None:
         return
@@ -173,7 +205,7 @@ def update_results(results, scroll=False, files=False):
             height=SCROLL_HEIGHT,
         )
         results_frame.pack(fill="both", expand=True)
-        root.geometry(f"{WIDTH}x{SEARCH_HEIGHT+SCROLL_HEIGHT}")
+        root.geometry(f"{WIDGET_WIDTH}x{SEARCH_HEIGHT+SCROLL_HEIGHT}")
         for result in results[:50]:
             if files:
                 item = ctk.CTkButton(
@@ -183,9 +215,9 @@ def update_results(results, scroll=False, files=False):
                     hover_color=FG_COLOR,
                     command=lambda path=result: open_file(path),
                     anchor="w",
-                    width=WIDTH,
+                    width=WIDGET_WIDTH,
                 )
-                item.configure(text=truncate_with_ellipsis(result, item, WIDTH - 10))
+                item.configure(text=truncate_with_ellipsis(result, item, WIDGET_WIDTH - 10))
             else:
                 item = ctk.CTkLabel(
                     results_frame,
@@ -197,9 +229,12 @@ def update_results(results, scroll=False, files=False):
     else:
         results_frame = ctk.CTkFrame(result_frame_frame, fg_color=BG_COLOR)
         results_frame.pack(fill="both", expand=True)
-        root.geometry(f"{WIDTH}x{SEARCH_HEIGHT+RESULT_HEIGHT}")
+        root.geometry(f"{WIDGET_WIDTH}x{SEARCH_HEIGHT+RESULT_HEIGHT}")
         item = ctk.CTkLabel(
-            results_frame, text=str(results), font=(FONT, SECONDARY_FONT_HEIGHT), anchor="w"
+            results_frame,
+            text=str(results),
+            font=(FONT, SECONDARY_FONT_HEIGHT),
+            anchor="w",
         )
         item.pack(fill="x")
 
@@ -222,17 +257,16 @@ def parse_input(input):
     return command, command_input
 
 
-
 def truncate_with_ellipsis(text, widget, max_width):
     f = Font(font=widget.cget("font"))
-    
+
     if f.measure(text) <= max_width:
         return text
-    
+
     ellipsis = "..."
-    while text and f.measure(ellipsis + text) + 30 > max_width: 
+    while text and f.measure(ellipsis + text) + 30 > max_width:
         text = text[1:]
-    
+
     return ellipsis + text
 
 
@@ -258,7 +292,7 @@ def force_focus():
 root = ctk.CTk()
 root.configure(fg_color=BG_COLOR)
 root.resizable(False, False)
-root.geometry(f"{WIDTH}x{SEARCH_HEIGHT}")
+root.geometry(f"{WIDGET_WIDTH}x{SEARCH_HEIGHT}")
 root.title("BroodjeKip Run")
 root.attributes("-topmost", True)
 center_window(root)
@@ -275,7 +309,7 @@ search_bar = ctk.CTkEntry(
     placeholder_text="Type...",
     font=(FONT, FULL_FONT_HEIGHT),
     height=SEARCH_HEIGHT,
-    width=WIDTH,
+    width=WIDGET_WIDTH,
 )
 search_bar.pack(fill="x", expand=True)
 result_frame_frame = ctk.CTkFrame(content_frame, fg_color=BG_COLOR)
