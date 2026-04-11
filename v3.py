@@ -1,13 +1,39 @@
 import tkinter as tk
 import tkinter.font as tkfont
 import subprocess
+import math
 import os
 import re
 
+# Configurable constants
 WIDTH = 400
 SEARCH_HEIGHT = 40
 HEIGHT_OFFSET = -50
-FONT = "JetBrains Mono"
+FONT = ("JetBrains Mono", 12)
+
+# Non-configurable constants
+MATH_NAMESPACE = {
+    "__builtins__": {},
+    "sqrt": math.sqrt,
+    "factorial": lambda n: math.factorial(int(n)),
+    "log": math.log,
+    "log2": math.log2,
+    "log10": math.log10,
+    "sin": math.sin,
+    "cos": math.cos,
+    "tan": math.tan,
+    "asin": math.asin,
+    "acos": math.acos,
+    "atan": math.atan,
+    "ceil": math.ceil,
+    "floor": math.floor,
+    "abs": abs,
+    "round": round,
+    "pow": pow,
+    "pi": math.pi,
+    "e": math.e,
+    "tau": math.tau,
+}
 
 
 root = tk.Tk()
@@ -20,20 +46,42 @@ root.geometry(  # Center the window to the screen
 root.resizable(False, False)
 
 search_var = tk.StringVar()
-search_bar = tk.Entry(root, textvariable=search_var)
-search_bar.pack(fill="x", ipady=12)
+search_bar = tk.Entry(root, textvariable=search_var, font=FONT)
+search_bar.pack(fill="x")
 
 result_frame = tk.Canvas(root)
-result_frame.pack()
 
 
 def main(*args):
     query = search_var.get()
-    update_result(query)
+    command, command_input, params = parse_query(query)
+
+    if command == "=":
+        result = calculator(command_input)
+        update_result(result)
+    else:
+        result = "Type the command..."
+        update_result(result)
 
 
 def calculator(input):
-    pass
+    try:
+        result = eval(input, MATH_NAMESPACE)
+        if callable(result):
+            raise TypeError
+        if update_result:
+            return f"= {result}"
+        if entered:
+            root.clipboard_clear()
+            root.clipboard_append(result)
+            root.update()
+            search_bar.delete(1, "end")
+            entered = False
+
+    except (SyntaxError, NameError, ZeroDivisionError, TypeError):
+        result = "Invalid expression"
+        if update_result:
+            return result
 
 
 def parse_query(query):
@@ -79,22 +127,30 @@ def update_result(results=None, is_list=False, is_files=False, is_apps=False):
                 item = tk.Button(
                     result_frame,
                     text="",
-                    font=(FONT, 16),
+                    font=FONT,
                     command=lambda path=result: open_file(path),
                     anchor="w",
+                    justify="left",
                 )
                 item.configure(text=truncate_with_ellipsis(result, item, WIDTH - 10))
             elif is_apps:  # To be implemented
-                item = tk.Label(result_frame, text=result, font=(FONT, 16), anchor="w")
+                item = tk.Label(
+                    result_frame, text=result, font=FONT, anchor="w", justify="left"
+                )
             else:
-                item = tk.Label(result_frame, text=result, font=(FONT, 16), anchor="w")
+                item = tk.Label(
+                    result_frame, text=result, font=FONT, anchor="w", justify="left"
+                )
 
             item.pack(fill="x")
 
     else:
         result_frame = tk.Frame(root)
         result_frame.pack()
-        item = tk.Label(result_frame, text=str(results), font=(FONT, 16))
+        item = tk.Label(
+            result_frame, text=str(results), font=FONT, anchor="w", justify="left"
+        )
+        item.pack()
 
     root.update_idletasks()
     root.geometry(f"{WIDTH}x{root.winfo_reqheight()}")
