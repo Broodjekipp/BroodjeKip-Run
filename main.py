@@ -2,7 +2,6 @@
 TODO:
 -Fuzzy search with difflib.get_close_matches
 -History
--App Icons
 """
 
 from decimal import Decimal, ROUND_HALF_UP
@@ -15,6 +14,7 @@ import tkinter as tk
 import subprocess
 import threading
 import cairosvg
+import difflib
 import math
 import json
 import os
@@ -260,9 +260,11 @@ def file_search(query):
         for dirpath, dirnames, filenames in os.walk(SEARCH_PATH):
             if cancel_event.is_set():
                 return
-            for filename in filenames:
-                if query.lower() in filename.lower():
-                    results.append(str(Path(dirpath) / filename))
+            names = dirnames + filenames
+            matches = difflib.get_close_matches(query.lower(), [n.lower() for n in names], n=MAX_RESULTS, cutoff=0.4)
+            for name in names:
+                if name.lower() in matches:
+                    results.append(str(Path(dirpath) / name))
         root.after(0, lambda: update_result(results, is_list=True, is_files=True))
 
     def delayed_start():
