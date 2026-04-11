@@ -1,9 +1,7 @@
 """
 TODO:
--Colors
 -Fuzzy search with difflib.get_close_matches
 -History
--Keyboard navigation
 -App Icons
 """
 
@@ -148,6 +146,7 @@ MATH_NAMESPACE = {
 root = tk.Tk()
 root.title("BroodjeKip Run")
 root.resizable(False, False)
+root.configure(bg=RESULTS_COLOR)
 root.bind("<Return>", lambda e: on_enter())
 root.bind("<Escape>", lambda e: root.destroy())
 root.bind("<FocusOut>", lambda e: root.destroy())
@@ -155,7 +154,7 @@ root.bind("<Down>", lambda e: move_selection(1))
 root.bind("<Up>", lambda e: move_selection(-1))
 
 search_var = tk.StringVar()
-search_bar = tk.Entry(root, textvariable=search_var, font=FONT)
+search_bar = tk.Entry(root, textvariable=search_var, font=FONT, fg=TEXT_COLOR, bg=SEARCH_BAR_COLOR)
 search_bar.pack(fill="x")
 
 result_frame = tk.Canvas(root)
@@ -305,14 +304,16 @@ def update_result(results=None, is_list=False, is_files=False, is_apps=False):
         return
 
     if is_list:
-        result_frame = tk.Frame(root)
+        result_frame = tk.Frame(root, bg=RESULTS_COLOR)
         result_frame.pack(fill="both", expand=True)
 
         global canvas
-        canvas = tk.Canvas(result_frame)
+        canvas = tk.Canvas(result_frame, bg=RESULTS_COLOR)
         result_canvas = canvas
-        scrollbar = tk.Scrollbar(result_frame, orient="vertical", command=canvas.yview)
-        inner_frame = tk.Frame(canvas)
+        scrollbar = tk.Scrollbar(
+            result_frame, orient="vertical", command=canvas.yview, bg=SEARCH_BAR_COLOR
+        )
+        inner_frame = tk.Frame(canvas, bg=RESULTS_COLOR)
 
         def on_frame_configure(e):
             canvas.configure(scrollregion=canvas.bbox("all"))
@@ -338,6 +339,7 @@ def update_result(results=None, is_list=False, is_files=False, is_apps=False):
                     command=lambda path=result: open_file(path),
                     anchor="w",
                     justify="left",
+                    fg=TEXT_COLOR,
                 )
                 result_items.append(item)
             elif is_apps:
@@ -349,22 +351,29 @@ def update_result(results=None, is_list=False, is_files=False, is_apps=False):
                     command=lambda e=executeable: launch_app(e),
                     anchor="w",
                     justify="left",
+                    fg=TEXT_COLOR,
                 )
                 result_items.append(item)
             else:
                 item = tk.Label(
-                    inner_frame, text=result, font=FONT, anchor="w", justify="left"
+                    inner_frame,
+                    text=result,
+                    font=FONT,
+                    anchor="w",
+                    justify="left",
+                    fg=TEXT_COLOR,
+                    bg=RESULTS_COLOR,
                 )
 
             item.pack(fill="x")
 
     else:
         result_frame = tk.Frame(root)
-        result_frame.pack()
+        result_frame.pack(fill="x")
         item = tk.Label(
-            result_frame, text=str(results), font=FONT, anchor="w", justify="left"
+            result_frame, text=str(results), font=FONT, anchor="w", justify="left", fg=TEXT_COLOR, bg=RESULTS_COLOR
         )
-        item.pack()
+        item.pack(fill="x")
 
     root.update_idletasks()
     root.geometry(f"{WIDTH}x{root.winfo_reqheight()}")
