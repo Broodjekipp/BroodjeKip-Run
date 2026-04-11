@@ -1,7 +1,13 @@
 """
-TODO:
--Fuzzy search with difflib.get_close_matches
--History
+TODO: 
+
+
+Web search:
+    -w : Choose search engine
+File search:
+    -e : Search by extension
+    -p : Search in path         
+
 """
 
 from decimal import Decimal, ROUND_HALF_UP
@@ -144,7 +150,7 @@ MATH_NAMESPACE = {
     "round": lambda n: int(
         Decimal(str(n)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     ),
-    "pow": pow,
+    "pow": math.pow,
     "pi": math.pi,
     "e": math.e,
     "tau": math.tau,
@@ -186,7 +192,7 @@ def main(*args):
         result = web_search()
         update_result(result)
     elif command == FILE_SEARCH_CMD:
-        file_search(command_input)
+        file_search(command_input, params)
     elif command == APP_SEARCH_CMD:
         app_search(command_input)
     elif command == RUN_CMD_CMD:
@@ -214,7 +220,7 @@ def on_enter():
         root.clipboard_clear()
         root.clipboard_append(str(result))
         root.update()
-        search_var.set("= ")
+        search_var.set(f"= {result}")
     elif command == WEB_SEARCH_CMD:
         engine = params.get("w", DEFAULT_ENGINE)
         url = SEARCH_ENGINES.get(engine, SEARCH_ENGINES[DEFAULT_ENGINE])
@@ -249,30 +255,36 @@ def web_search():
     return "Press ENTER to search..."
 
 
-def file_search(query):
+def file_search(query, params=None):
+    if params is None:
+        params = {}
+    ext = params.get("e")
+    path_to_search = Path(params.get("p", SEARCH_PATH)).expanduser()
+    if ext and not ext.startswith("."):
+        ext = f".{ext}"
+
     update_result("Searching...")
     cancel_event.set()
-
     def run_search():
-        results = []
         if not query:
             return
-        for dirpath, dirnames, filenames in os.walk(SEARCH_PATH):
+        scored_results = []
+        for dirpath, dirnames, filenames in os.walk(path_to_search):
             if cancel_event.is_set():
                 return
-            names = dirnames + filenames
-            matches = difflib.get_close_matches(query.lower(), [n.lower() for n in names], n=MAX_RESULTS, cutoff=0.4)
-            for name in names:
-                if name.lower() in matches:
-                    results.append(str(Path(dirpath) / name))
+            for name in dirnames + filenames:
+                if ext and not name.endswith(ext):
+                    continue
+                score = difflib.SequenceMatcher(None, query.lower(), name.lower()).ratio()
+                if score >= 0.4:
+                    scored_results.append((str(Path(dirpath) / name), score))
+        scored_results.sort(key=lambda x: x[1], reverse=True)
+        results = [path for path, _ in scored_results[:MAX_RESULTS]]
         root.after(0, lambda: update_result(results, is_list=True, is_files=True))
-
     def delayed_start():
         cancel_event.clear()
         threading.Thread(target=run_search, daemon=True).start()
-
-    root.after(10, delayed_start)
-
+    root.after(100, delayed_start)
 
 def app_search(query):
     found_apps = []
