@@ -1,8 +1,10 @@
 """
 TODO:
--More commands
-    -App search
-        -App click in update_results()
+-Colors
+-Fuzzy search with difflib.get_close_matches
+-History
+-Keyboard navigation
+-App Icons
 """
 
 from decimal import Decimal, ROUND_HALF_UP
@@ -11,7 +13,6 @@ from urllib.parse import quote
 from pathlib import Path
 import tkinter.font as tkfont
 import tkinter as tk
-import configparser
 import subprocess
 import threading
 import math
@@ -28,7 +29,12 @@ json_default = {
         "max_results_height": 300,
     },
     "font": {"family": "JetBrains Mono", "height": 14},
-    "colors": {"search_bar": "#2f2f2f", "results": "#141414", "text": "#d0d0d0"},
+    "colors": {
+        "search_bar": "#2f2f2f",
+        "results": "#141414",
+        "text": "#d0d0d0",
+        "highlight": "#444444",
+    },
     "commands": {
         "calculator": "=",
         "web_search": "?",
@@ -58,14 +64,16 @@ json_default = {
     "max_results": 50,
 }
 
-try:
-    with open(CONFIG_PATH) as f:
-        settings = json.load(f)
-except FileNotFoundError:
-    with open(CONFIG_PATH, "w") as f:
-        json.dump(json_default, f)
-    with open(CONFIG_PATH) as f:
-        settings = json.load(f)
+
+def load_settings():
+    try:
+        with open(CONFIG_PATH) as f:
+            return {**json_default, **json.load(f)}
+    except Exception:
+        return json_default
+
+
+settings = load_settings()
 
 # Configurable constants
 WIDTH = settings.get("dimensions", {}).get("width", 500)
@@ -77,6 +85,7 @@ FONT_HEIGHT = settings.get("font", {}).get("height", 14)
 SEARCH_BAR_COLOR = settings.get("colors", {}).get("search_bar", "#2f2f2f")
 RESULTS_COLOR = settings.get("colors", {}).get("results", "#141414")
 TEXT_COLOR = settings.get("colors", {}).get("text", "#d0d0d0")
+HIGHLIGHT_COLOR = settings.get("colors", {}).get("highlight", "#444444")
 
 CALCULATOR_CMD = settings.get("commands", {}).get("calculator", "=")
 WEB_SEARCH_CMD = settings.get("commands", {}).get("web_search", "?")
@@ -142,13 +151,20 @@ root.resizable(False, False)
 root.bind("<Return>", lambda e: on_enter())
 root.bind("<Escape>", lambda e: root.destroy())
 root.bind("<FocusOut>", lambda e: root.destroy())
+root.bind("<Down>", lambda e: move_selection(1))
+root.bind("<Up>", lambda e: move_selection(-1))
 
 search_var = tk.StringVar()
 search_bar = tk.Entry(root, textvariable=search_var, font=FONT)
 search_bar.pack(fill="x")
 
 result_frame = tk.Canvas(root)
+result_canvas = None
+
 cancel_event = threading.Event()  # For file_search
+
+selected_index = -1
+result_items = []
 
 
 def main(*args):
@@ -175,9 +191,15 @@ def main(*args):
 
 
 def on_enter():
+
+    global selected_index
+
+    if 0 <= selected_index < len(result_items):
+        result_items[selected_index].invoke()
+        return
+
     query = search_var.get()
     command, command_input, params = parse_query(query)
-    print(repr(command), repr(command_input), repr(SYS_CMD_CMD))
 
     if command == CALCULATOR_CMD:
         result = calculator(command_input)
@@ -273,7 +295,9 @@ def parse_query(query):
 
 
 def update_result(results=None, is_list=False, is_files=False, is_apps=False):
-    global result_frame
+    global selected_index, result_frame, result_canvas
+    result_items.clear()
+    selected_index = -1
     result_frame.destroy()
 
     if results == None:
@@ -284,7 +308,9 @@ def update_result(results=None, is_list=False, is_files=False, is_apps=False):
         result_frame = tk.Frame(root)
         result_frame.pack(fill="both", expand=True)
 
+        global canvas
         canvas = tk.Canvas(result_frame)
+        result_canvas = canvas
         scrollbar = tk.Scrollbar(result_frame, orient="vertical", command=canvas.yview)
         inner_frame = tk.Frame(canvas)
 
@@ -313,6 +339,7 @@ def update_result(results=None, is_list=False, is_files=False, is_apps=False):
                     anchor="w",
                     justify="left",
                 )
+                result_items.append(item)
             elif is_apps:
                 name, executeable = result
                 item = tk.Button(
@@ -323,6 +350,7 @@ def update_result(results=None, is_list=False, is_files=False, is_apps=False):
                     anchor="w",
                     justify="left",
                 )
+                result_items.append(item)
             else:
                 item = tk.Label(
                     inner_frame, text=result, font=FONT, anchor="w", justify="left"
@@ -340,10 +368,42 @@ def update_result(results=None, is_list=False, is_files=False, is_apps=False):
 
     root.update_idletasks()
     root.geometry(f"{WIDTH}x{root.winfo_reqheight()}")
+    if result_items and search_var.get().strip():
+        selected_index = 0
+        update_selection()
 
 
-def launch_app(desktop_file):
-    subprocess.Popen(["gtk-launch", desktop_file], stderr=subprocess.DEVNULL)
+def update_selection():
+    for i, item in enumerate(result_items):
+        if i == selected_index:
+            item.config(bg=HIGHLIGHT_COLOR)  # highlight
+        else:
+            item.config(bg=RESULTS_COLOR)
+
+
+def move_selection(direction):
+    global selected_index
+
+    if not result_items:
+        return
+
+    selected_index += direction
+    selected_index %= len(result_items)
+
+    update_selection()
+
+    if result_canvas:
+        scroll_to_selected(result_canvas)
+
+
+def scroll_to_selected(canvas):
+    if 0 <= selected_index < len(result_items):
+        item = result_items[selected_index]
+        canvas.update_idletasks()
+        total_height = canvas.bbox("all")[3]
+        if total_height > 0:
+            canvas.yview_moveto(item.winfo_y() / total_height)
+
 
 def load_apps():
     apps = []
@@ -361,6 +421,10 @@ def load_apps():
             if name:
                 apps.append((name, f.stem))
     return apps
+
+
+def launch_app(desktop_file):
+    subprocess.Popen(["gtk-launch", desktop_file], stderr=subprocess.DEVNULL)
 
 
 def open_file(path):
@@ -396,7 +460,6 @@ def center_window():
 
 
 APPS = load_apps()
-print([a for a in APPS if "firefox" in a[0].lower()])
 center_window()
 search_var.trace_add("write", main)
 root.after(50, force_focus)
