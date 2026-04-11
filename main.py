@@ -234,7 +234,7 @@ def on_enter():
         root.clipboard_clear()
         root.clipboard_append(str(result))
         root.update()
-        search_var.set("")
+        search_var.set("= ")
     elif command == WEB_SEARCH_CMD:
         engine = params.get("w", DEFAULT_ENGINE)
         url = SEARCH_ENGINES.get(engine, SEARCH_ENGINES[DEFAULT_ENGINE])
