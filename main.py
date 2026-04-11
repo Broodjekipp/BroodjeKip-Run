@@ -7,16 +7,23 @@ TODO:
 
 from decimal import Decimal, ROUND_HALF_UP
 from webbrowser import open as webopen
+from PIL import Image, ImageTk
 from urllib.parse import quote
 from pathlib import Path
 import tkinter.font as tkfont
 import tkinter as tk
 import subprocess
 import threading
+import cairosvg
 import math
 import json
 import os
 import re
+import gi
+import io
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk  # type: ignore
 
 CONFIG_PATH = Path.home() / ".config" / "broodjekip-run" / "settings.json"
 json_default = {
@@ -154,10 +161,12 @@ root.bind("<Down>", lambda e: move_selection(1))
 root.bind("<Up>", lambda e: move_selection(-1))
 
 search_var = tk.StringVar()
-search_bar = tk.Entry(root, textvariable=search_var, font=FONT, fg=TEXT_COLOR, bg=SEARCH_BAR_COLOR)
+search_bar = tk.Entry(
+    root, textvariable=search_var, font=FONT, fg=TEXT_COLOR, bg=SEARCH_BAR_COLOR
+)
 search_bar.pack(fill="x")
 
-result_frame = tk.Canvas(root)
+result_frame = tk.Canvas(root, bg=RESULTS_COLOR)
 result_canvas = None
 
 cancel_event = threading.Event()  # For file_search
@@ -340,19 +349,24 @@ def update_result(results=None, is_list=False, is_files=False, is_apps=False):
                     anchor="w",
                     justify="left",
                     fg=TEXT_COLOR,
+                    bg=RESULTS_COLOR,
                 )
                 result_items.append(item)
             elif is_apps:
-                name, executeable = result
+                name, executable, icon_name = result
+                photo = load_icon(icon_name)
                 item = tk.Button(
                     inner_frame,
                     text=truncate_with_ellipsis(name, WIDTH),
                     font=FONT,
-                    command=lambda e=executeable: launch_app(e),
+                    command=lambda e=executable: launch_app(e),
                     anchor="w",
                     justify="left",
                     fg=TEXT_COLOR,
+                    bg=RESULTS_COLOR,
+                    **({"image": photo, "compound": "left"} if photo else {}),
                 )
+                item.image = photo  # type: ignore
                 result_items.append(item)
             else:
                 item = tk.Label(
@@ -371,12 +385,19 @@ def update_result(results=None, is_list=False, is_files=False, is_apps=False):
         result_frame = tk.Frame(root)
         result_frame.pack(fill="x")
         item = tk.Label(
-            result_frame, text=str(results), font=FONT, anchor="w", justify="left", fg=TEXT_COLOR, bg=RESULTS_COLOR
+            result_frame,
+            text=str(results),
+            font=FONT,
+            anchor="w",
+            justify="left",
+            fg=TEXT_COLOR,
+            bg=RESULTS_COLOR,
         )
         item.pack(fill="x")
 
     root.update_idletasks()
     root.geometry(f"{WIDTH}x{root.winfo_reqheight()}")
+
     if result_items and search_var.get().strip():
         selected_index = 0
         update_selection()
@@ -414,22 +435,50 @@ def scroll_to_selected(canvas):
             canvas.yview_moveto(item.winfo_y() / total_height)
 
 
+def find_icon(name, size=32):
+    theme = Gtk.IconTheme.get_default()
+    info = theme.lookup_icon(name, size, 0)
+    return info.get_filename() if info else None
+
+
 def load_apps():
     apps = []
     dirs = [Path("/usr/share/applications"), Path.home() / ".local/share/applications"]
     for d in dirs:
         for f in d.glob("*.desktop"):
             name = None
+            icon = None
             try:
                 with open(f) as file:
                     for line in file:
                         if line.startswith("Name=") and not name:
                             name = line.strip().split("=", 1)[1]
+                        elif line.startswith("Icon=") and not icon:
+                            icon = line.strip().split("=", 1)[1]
             except (OSError, UnicodeDecodeError):
                 pass
             if name:
-                apps.append((name, f.stem))
+                apps.append((name, f.stem, icon))
     return apps
+
+
+def load_icon(icon_name, size=16):
+    if not icon_name:
+        return None
+    path = find_icon(icon_name, size)
+    if not path:
+        return None
+    try:
+        if path.endswith(".svg"):
+            png_data = cairosvg.svg2png(url=path, output_width=size, output_height=size)
+            assert png_data
+            img = Image.open(io.BytesIO(png_data)).convert("RGBA")
+        else:
+            img = Image.open(path).resize((size, size)).convert("RGBA")
+        return ImageTk.PhotoImage(img)
+    except Exception as e:
+        print(f"failed to load {path}: {e}")
+        return None
 
 
 def launch_app(desktop_file):
@@ -467,10 +516,10 @@ def center_window():
         f"{WIDTH}x{SEARCH_HEIGHT}+{(screen_w - WIDTH) // 2}+{(screen_h - SEARCH_HEIGHT) // 2 + HEIGHT_OFFSET}"
     )
 
-
+root.update_idletasks()
+root.geometry(f"{WIDTH}x{root.winfo_reqheight()}")
 APPS = load_apps()
 center_window()
 search_var.trace_add("write", main)
 root.after(50, force_focus)
-update_result("")
 root.mainloop()
