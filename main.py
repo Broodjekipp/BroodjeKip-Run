@@ -159,7 +159,7 @@ def main(*args):
         result = f"= {calculator(command_input)}"
         update_result(result)
     elif command == WEB_SEARCH_CMD:
-        result = web_search(command_input, params)
+        result = web_search()
         update_result(result)
     elif command == FILE_SEARCH_CMD:
         result = file_search(command_input)
@@ -180,28 +180,31 @@ def calculator(input):
     return result
 
 
-def web_search(query, params):
+def web_search():
     return "Press ENTER to search..."
 
 
 def file_search(query):
     update_result("Searching...")
-
     cancel_event.set()
-    cancel_event.clear()
 
-    def run():
+    def run_search():
         results = []
         if not query:
-            return results
+            return
         for dirpath, dirnames, filenames in os.walk(SEARCH_PATH):
-            dirnames[:] = [d for d in dirnames]
+            if cancel_event.is_set():
+                return
             for filename in filenames:
                 if query.lower() in filename.lower():
                     results.append(str(Path(dirpath) / filename))
         root.after(0, lambda: update_result(results, is_list=True, is_files=True))
 
-    threading.Thread(target=run, daemon=True).start()
+    def delayed_start():
+        cancel_event.clear()
+        threading.Thread(target=run_search, daemon=True).start()
+
+    root.after(10, delayed_start)
 
 
 def parse_query(query):
@@ -295,13 +298,12 @@ def truncate_with_ellipsis(text, max_width):
     global FONT_OBJ
     if FONT_OBJ is None:
         FONT_OBJ = tkfont.Font(family=FONT_FAMILY, size=FONT_HEIGHT)
-    f = tkfont.Font(family=FONT_FAMILY, size=FONT_HEIGHT)
-    if f.measure(text) <= max_width:
+    if FONT_OBJ.measure(text) <= max_width:
         return text
-    ellipsis = "..."
-    while text and f.measure(ellipsis + text) + 30 > max_width:
+    ellipsis_str = "..."
+    while text and FONT_OBJ.measure(ellipsis_str + text) + 30 > max_width:
         text = text[1:]
-    return ellipsis + text
+    return ellipsis_str + text
 
 
 def on_enter():
