@@ -1,19 +1,17 @@
 """
 TODO:
--Json settings
 -More commands
     -App search
         -App click in update_results()
-    -Run command
-    -Run system command
--Run with hotkey
 """
 
-from urllib.parse import quote
+from decimal import Decimal, ROUND_HALF_UP
 from webbrowser import open as webopen
+from urllib.parse import quote
 from pathlib import Path
 import tkinter.font as tkfont
 import tkinter as tk
+import configparser
 import subprocess
 import threading
 import math
@@ -129,7 +127,9 @@ MATH_NAMESPACE = {
     "ceil": math.ceil,
     "floor": math.floor,
     "abs": abs,
-    "round": round,
+    "round": lambda n: int(
+        Decimal(str(n)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    ),
     "pow": pow,
     "pi": math.pi,
     "e": math.e,
@@ -162,10 +162,45 @@ def main(*args):
         result = web_search()
         update_result(result)
     elif command == FILE_SEARCH_CMD:
-        result = file_search(command_input)
+        file_search(command_input)
+    elif command == APP_SEARCH_CMD:
+        app_search(command_input)
+    elif command == RUN_CMD_CMD:
+        update_result("Press ENTER to run command...")
+    elif command == SYS_CMD_CMD:
+        update_result("Press ENTER to run system command...")
     else:
         result = "Type the command..."
         update_result(result)
+
+
+def on_enter():
+    query = search_var.get()
+    command, command_input, params = parse_query(query)
+    print(repr(command), repr(command_input), repr(SYS_CMD_CMD))
+
+    if command == CALCULATOR_CMD:
+        result = calculator(command_input)
+        root.clipboard_clear()
+        root.clipboard_append(str(result))
+        root.update()
+        search_var.set("= ")
+    elif command == WEB_SEARCH_CMD:
+        engine = params.get("w", DEFAULT_ENGINE)
+        url = SEARCH_ENGINES.get(engine, SEARCH_ENGINES[DEFAULT_ENGINE])
+        webopen(url + quote(command_input))
+        root.withdraw()
+    elif command == RUN_CMD_CMD:
+        subprocess.Popen(["kitty", "--", "bash", "-c", f"{command_input}; exec bash"])
+    elif command == SYS_CMD_CMD:
+        if command_input in ("r", "restart"):
+            os.system("systemctl reboot")
+        elif command_input in ("s", "shutdown"):
+            os.system("systemctl poweroff")
+        elif command_input in ("l", "logout"):
+            os.system("loginctl terminate-session $XDG_SESSION_ID")
+        else:
+            update_result("Command not found.")
 
 
 def calculator(input):
@@ -205,6 +240,16 @@ def file_search(query):
         threading.Thread(target=run_search, daemon=True).start()
 
     root.after(10, delayed_start)
+
+
+def app_search(query):
+    found_apps = []
+    if query:
+        update_result("Searching...")
+    for app in APPS:
+        if query.lower() in app[0].lower():
+            found_apps.append(app)
+    update_result(found_apps, is_list=True, is_apps=True)
 
 
 def parse_query(query):
@@ -249,6 +294,11 @@ def update_result(results=None, is_list=False, is_files=False, is_apps=False):
 
         inner_frame.bind("<Configure>", on_frame_configure)
         canvas.create_window((0, 0), window=inner_frame, anchor="nw")
+
+        def on_canvas_configure(e):
+            canvas.itemconfig(canvas.find_all()[0], width=e.width)
+
+        canvas.bind("<Configure>", on_canvas_configure)
         canvas.configure(yscrollcommand=scrollbar.set)
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
@@ -257,16 +307,21 @@ def update_result(results=None, is_list=False, is_files=False, is_apps=False):
             if is_files:
                 item = tk.Button(
                     inner_frame,
-                    text="",
+                    text=truncate_with_ellipsis(result, WIDTH),
                     font=FONT,
                     command=lambda path=result: open_file(path),
                     anchor="w",
                     justify="left",
                 )
-                item.configure(text=truncate_with_ellipsis(result, WIDTH - 10))
             elif is_apps:
-                item = tk.Label(
-                    inner_frame, text=result, font=FONT, anchor="w", justify="left"
+                name, executeable = result
+                item = tk.Button(
+                    inner_frame,
+                    text=truncate_with_ellipsis(name, WIDTH),
+                    font=FONT,
+                    command=lambda e=executeable: launch_app(e),
+                    anchor="w",
+                    justify="left",
                 )
             else:
                 item = tk.Label(
@@ -287,6 +342,27 @@ def update_result(results=None, is_list=False, is_files=False, is_apps=False):
     root.geometry(f"{WIDTH}x{root.winfo_reqheight()}")
 
 
+def launch_app(desktop_file):
+    subprocess.Popen(["gtk-launch", desktop_file], stderr=subprocess.DEVNULL)
+
+def load_apps():
+    apps = []
+    dirs = [Path("/usr/share/applications"), Path.home() / ".local/share/applications"]
+    for d in dirs:
+        for f in d.glob("*.desktop"):
+            name = None
+            try:
+                with open(f) as file:
+                    for line in file:
+                        if line.startswith("Name=") and not name:
+                            name = line.strip().split("=", 1)[1]
+            except (OSError, UnicodeDecodeError):
+                pass
+            if name:
+                apps.append((name, f.stem))
+    return apps
+
+
 def open_file(path):
     if os.path.isfile(path):
         subprocess.Popen(["xdg-open", os.path.dirname(path)], stderr=subprocess.DEVNULL)
@@ -301,26 +377,9 @@ def truncate_with_ellipsis(text, max_width):
     if FONT_OBJ.measure(text) <= max_width:
         return text
     ellipsis_str = "..."
-    while text and FONT_OBJ.measure(ellipsis_str + text) + 30 > max_width:
+    while text and FONT_OBJ.measure(ellipsis_str + text) + 40 > max_width:
         text = text[1:]
     return ellipsis_str + text
-
-
-def on_enter():
-    query = search_var.get()
-    command, command_input, params = parse_query(query)
-
-    if command == CALCULATOR_CMD:
-        result = calculator(command_input)
-        root.clipboard_clear()
-        root.clipboard_append(str(result))
-        root.update()
-        search_var.set("= ")
-    elif command == WEB_SEARCH_CMD:
-        engine = params.get("w", DEFAULT_ENGINE)
-        url = SEARCH_ENGINES.get(engine, SEARCH_ENGINES[DEFAULT_ENGINE])
-        webopen(url + quote(command_input))
-        root.withdraw()
 
 
 def force_focus():
@@ -336,6 +395,8 @@ def center_window():
     )
 
 
+APPS = load_apps()
+print([a for a in APPS if "firefox" in a[0].lower()])
 center_window()
 search_var.trace_add("write", main)
 root.after(50, force_focus)
