@@ -1,15 +1,3 @@
-"""
-TODO: 
-
-
-Web search:
-    -w : Choose search engine
-File search:
-    -e : Search by extension
-    -p : Search in path         
-
-"""
-
 from decimal import Decimal, ROUND_HALF_UP
 from webbrowser import open as webopen
 from PIL import Image, ImageTk
@@ -19,8 +7,8 @@ import tkinter.font as tkfont
 import tkinter as tk
 import subprocess
 import threading
+import rapidfuzz
 import cairosvg
-import difflib
 import math
 import json
 import os
@@ -101,9 +89,10 @@ HIGHLIGHT_COLOR = settings.get("colors", {}).get("highlight", "#444444")
 CALCULATOR_CMD = settings.get("commands", {}).get("calculator", "=")
 WEB_SEARCH_CMD = settings.get("commands", {}).get("web_search", "?")
 FILE_SEARCH_CMD = settings.get("commands", {}).get("file_search", "f")
-APP_SEARCH_CMD = settings.get("commands", {}).get("app_search", "a")
+APP_SEARCH_CMD = settings.get("commands", {}).get("app_search", "@")
 RUN_CMD_CMD = settings.get("commands", {}).get("run_command", ">")
 SYS_CMD_CMD = settings.get("commands", {}).get("system_command", "<")
+HELP_CMD = settings.get("commands", {}).get("help", "h")
 
 SEARCH_PATH = Path(
     settings.get("search", {}).get("default_search_path", "~")
@@ -127,6 +116,7 @@ SEARCH_ENGINES = settings.get("search", {}).get(
     },
 )
 MAX_RESULTS = settings.get("max_results", 50)
+TERMINAL = settings.get("terminal", "default")
 
 # Non-configurable constants
 FONT = (FONT_FAMILY, FONT_HEIGHT)
@@ -155,6 +145,24 @@ MATH_NAMESPACE = {
     "e": math.e,
     "tau": math.tau,
 }
+HELP_TEXT = f"""Basic structure: 
+<command> <parameters> <input>
+e.g. {WEB_SEARCH_CMD} -w wikipedia tkinter
+
+Calculator:     {CALCULATOR_CMD}
+    Allows math expressions:
+      = log2(tau ** sqrt(2))
+Web search:     {WEB_SEARCH_CMD}
+    -w : Choose search engine
+File search:    {FILE_SEARCH_CMD}
+    -e : Search by extension
+    -p : Search in path
+App search:     {APP_SEARCH_CMD}
+Run command:    {RUN_CMD_CMD}
+System command: {SYS_CMD_CMD}
+    r  : Restart
+    s  : Shutdown
+    l  : Logout"""
 
 root = tk.Tk()
 root.title("BroodjeKip Run")
@@ -199,6 +207,8 @@ def main(*args):
         update_result("Press ENTER to run command...")
     elif command == SYS_CMD_CMD:
         update_result("Press ENTER to run system command...")
+    elif command == HELP_CMD:
+        update_result(HELP_TEXT)
     else:
         result = "Type the command..."
         update_result(result)
@@ -227,7 +237,7 @@ def on_enter():
         webopen(url + quote(command_input))
         root.withdraw()
     elif command == RUN_CMD_CMD:
-        subprocess.Popen(["kitty", "--", "bash", "-c", f"{command_input}; exec bash"])
+        subprocess.Popen([TERMINAL, "-e", "bash", "-c", f"{command_input}; exec bash"])
     elif command == SYS_CMD_CMD:
         if command_input in ("r", "restart"):
             os.system("systemctl reboot")
@@ -259,15 +269,21 @@ def file_search(query, params=None):
     if params is None:
         params = {}
     ext = params.get("e")
-    path_to_search = Path(params.get("p", SEARCH_PATH)).expanduser()
+    if ext is True:
+        ext = None
+    p = params.get("p")
+    path_to_search = Path(p if isinstance(p, str) else SEARCH_PATH).expanduser()
     if ext and not ext.startswith("."):
         ext = f".{ext}"
 
-    update_result("Searching...")
     cancel_event.set()
+    update_result("Searching...")
+
+    if not query:
+        update_result("Invalid search string...")
+        return
+
     def run_search():
-        if not query:
-            return
         scored_results = []
         for dirpath, dirnames, filenames in os.walk(path_to_search):
             if cancel_event.is_set():
@@ -275,16 +291,20 @@ def file_search(query, params=None):
             for name in dirnames + filenames:
                 if ext and not name.endswith(ext):
                     continue
-                score = difflib.SequenceMatcher(None, query.lower(), name.lower()).ratio()
+                score = rapidfuzz.fuzz.ratio(query, name) / 100
                 if score >= 0.4:
                     scored_results.append((str(Path(dirpath) / name), score))
+
         scored_results.sort(key=lambda x: x[1], reverse=True)
         results = [path for path, _ in scored_results[:MAX_RESULTS]]
         root.after(0, lambda: update_result(results, is_list=True, is_files=True))
+
     def delayed_start():
         cancel_event.clear()
         threading.Thread(target=run_search, daemon=True).start()
+
     root.after(100, delayed_start)
+
 
 def app_search(query):
     found_apps = []
@@ -307,8 +327,11 @@ def parse_query(query):
         params = {}
         for match in re.finditer(r"-(\w+)\s+(\S+)", query):
             params[match.group(1)] = match.group(2)
+        for match in re.finditer(r"-(\w+)(?!\s+\S)", query):
+            if match.group(1) not in params:
+                params[match.group(1)] = True
 
-        command_input = re.sub(r"-\w+\s+\S+\s*", "", query).strip()
+        command_input = re.sub(r"-\w+(?:\s+\S+)?\s*", "", query).strip()
     else:
         command_input = query
         params = {}
@@ -420,7 +443,7 @@ def update_result(results=None, is_list=False, is_files=False, is_apps=False):
 def update_selection():
     for i, item in enumerate(result_items):
         if i == selected_index:
-            item.config(bg=HIGHLIGHT_COLOR)  # highlight
+            item.config(bg=HIGHLIGHT_COLOR)
         else:
             item.config(bg=RESULTS_COLOR)
 
@@ -526,9 +549,10 @@ def force_focus():
 def center_window():
     screen_w = root.winfo_screenwidth()
     screen_h = root.winfo_screenheight()
-    root.geometry(  # Center the window to the screen
+    root.geometry( 
         f"{WIDTH}x{SEARCH_HEIGHT}+{(screen_w - WIDTH) // 2}+{(screen_h - SEARCH_HEIGHT) // 2 + HEIGHT_OFFSET}"
     )
+
 
 root.update_idletasks()
 root.geometry(f"{WIDTH}x{root.winfo_reqheight()}")
