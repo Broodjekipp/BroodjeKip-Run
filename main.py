@@ -382,12 +382,17 @@ def file_search(query, params=None):
 
 def app_search(query):
     found_apps = []
-    if query:
-        update_result("Searching...")
     for app in APPS:
         if query.lower() in app[0].lower():
             found_apps.append(app)
-    update_result(found_apps, is_list=True, is_apps=True)
+    if not found_apps:
+        update_result("No apps found.")
+        return
+    max_items_without_scroll = MAX_RESULTS_HEIGHT // (FONT_HEIGHT + 16)
+    if len(found_apps) > max_items_without_scroll:
+        update_result(found_apps, is_list=True, is_apps=True)
+    else:
+        update_result(found_apps, is_apps=True)
 
 
 def parse_query(query):
@@ -494,16 +499,35 @@ def update_result(results=None, is_list=False, is_files=False, is_apps=False):
     else:
         result_frame = tk.Frame(root)
         result_frame.pack(fill="x")
-        item = tk.Label(
-            result_frame,
-            text=wrap_text(str(results), WIDTH),
-            font=FONT,
-            anchor="w",
-            justify="left",
-            fg=TEXT_COLOR,
-            bg=RESULTS_COLOR,
-        )
-        item.pack(fill="x")
+        if is_apps:
+            for result in results[:MAX_RESULTS]:
+                name, executable, icon_name = result
+                photo = load_icon(icon_name)
+                item = tk.Button(
+                    result_frame,
+                    text=truncate_with_ellipsis(name, WIDTH),
+                    font=FONT,
+                    command=lambda e=executable: launch_app(e),
+                    anchor="w",
+                    justify="left",
+                    fg=TEXT_COLOR,
+                    bg=RESULTS_COLOR,
+                    **({"image": photo, "compound": "left"} if photo else {}),
+                )
+                item.image = photo  # type: ignore
+                result_items.append(item)
+                item.pack(fill="x")
+        else:
+            item = tk.Label(
+                result_frame,
+                text=wrap_text(str(results), WIDTH),
+                font=FONT,
+                anchor="w",
+                justify="left",
+                fg=TEXT_COLOR,
+                bg=RESULTS_COLOR,
+            )
+            item.pack(fill="x")
 
     root.update_idletasks()
     center_window()
@@ -569,6 +593,7 @@ def load_apps():
                 pass
             if name:
                 apps.append((name, f.stem, icon))
+    apps.sort(key=lambda x: x[0].lower())  # Sort results alphabetically
     return apps
 
 
@@ -652,7 +677,6 @@ def center_window():
 
     root.geometry(f"{WIDTH}x{height}+{x}+{y}")
 
-print(HEIGHT_OFFSET)
 
 update_result("Type h for help...")
 root.update_idletasks()
