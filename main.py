@@ -1,10 +1,18 @@
+"""
+TODO
+-`-d` param in file search for search depth limiting
+-command history
+"""
+
 from decimal import Decimal, ROUND_HALF_UP
-from gi import require_version
 from webbrowser import open as webopen
 from threading import Thread, Event
-from os import system, walk, path
 from PIL import Image, ImageTk
+from gi import require_version
 from urllib.parse import quote
+from pint import UnitRegistry
+from os import system, walk
+from rapidfuzz import fuzz
 from pathlib import Path
 import tkinter.font as tkfont
 import tkinter as tk
@@ -67,7 +75,9 @@ def load_settings():
         with open(CONFIG_PATH) as f:
             return {**json_default, **json.load(f)}
     except Exception:
-        return json_default
+        with open(CONFIG_PATH, "w") as f:
+            json.dump(json_default, f, indent=2)
+            return json_default
 
 
 settings = load_settings()
@@ -85,6 +95,7 @@ TEXT_COLOR = settings.get("colors", {}).get("text", "#d0d0d0")
 HIGHLIGHT_COLOR = settings.get("colors", {}).get("highlight", "#444444")
 
 CALCULATOR_CMD = settings.get("commands", {}).get("calculator", "=")
+CONVERTER_CMD = settings.get("commands", {}).get("converter", "c")
 WEB_SEARCH_CMD = settings.get("commands", {}).get("web_search", "?")
 FILE_SEARCH_CMD = settings.get("commands", {}).get("file_search", "f")
 APP_SEARCH_CMD = settings.get("commands", {}).get("app_search", "@")
@@ -142,6 +153,49 @@ MATH_NAMESPACE = {
     "pi": math.pi,
     "e": math.e,
     "tau": math.tau,
+}
+UNIT_ALIASES = {
+    "c": "degC",
+    "f": "degF",
+    "k": "kelvin",
+    "km": "kilometer",
+    "m": "meter",
+    "cm": "centimeter",
+    "mm": "millimeter",
+    "mi": "mile",
+    "nmi": "nautical_mile",
+    "au": "astronomical_unit",
+    "ly": "light_year",
+    "in": "inch",
+    "ft": "foot",
+    "yd": "yard",
+    "kg": "kilogram",
+    "g": "gram",
+    "mg": "milligram",
+    "t": "metric_ton",
+    "ton": "imperial_ton",
+    "oz": "ounce",
+    "lb": "pound",
+    "floz": "fluid_ounce",
+    "l": "liter",
+    "ml": "milliliter",
+    "pt": "pint",
+    "qt": "quart",
+    "gal": "gallon",
+    "s": "second",
+    "min": "minute",
+    "h": "hour",
+    "d": "day",
+    "wk": "week",
+    "sqm": "meter**2",
+    "sqkm": "kilometer**2",
+    "sqmi": "mile**2",
+    "sqmm": "millimeter**2",
+    "sqcm": "centimeter**2",
+    "ha": "hectare",
+    "acre": "acre",
+    "cm3": "centimeter**3",
+    "m3": "meter**3",
 }
 HELP_TEXT = {
     "": f"""Commands:
@@ -230,7 +284,7 @@ Actions:
   s / shutdown   Power off
   l / logout     Log out""",
 }
-
+ureg = UnitRegistry()
 
 root = tk.Tk()
 root.title("BroodjeKip Run")
@@ -253,7 +307,6 @@ result_canvas = None
 
 cancel_event = Event()  # For file_search
 _cairosvg = None
-_rapidfuzz = None
 
 selected_index = -1
 result_items = []
@@ -273,6 +326,8 @@ def main(*args):
 
     if command == CALCULATOR_CMD:
         update_result(f"= {calculator(command_input)}")
+    elif command == CONVERTER_CMD:
+        update_result(unit_convert(command_input))
     elif command == FILE_SEARCH_CMD:
         file_search(command_input, params)
     elif command == APP_SEARCH_CMD:
@@ -306,6 +361,12 @@ def on_enter():
         root.clipboard_append(str(result))
         root.update()
         search_var.set(f"= {result}")
+    elif command == CONVERTER_CMD:
+        result = unit_convert(command_input)
+        root.clipboard_clear()
+        root.clipboard_append(str(result))
+        root.update()
+        search_var.set(f"c {result}")
     elif command == WEB_SEARCH_CMD:
         engine = params.get("w", DEFAULT_ENGINE)
         url = SEARCH_ENGINES.get(engine, SEARCH_ENGINES[DEFAULT_ENGINE])
@@ -336,8 +397,37 @@ def calculator(input):
     return result
 
 
+def unit_convert(query):
+    parts = query.split()
+
+    if len(parts) == 2:
+        match = re.match(r"([\d.]+)(.*)", parts[0])
+        if not match:
+            return "Invalid value."
+
+        value = match.group(1)
+        from_alias = match.group(2).strip()
+        to_alias = parts[1].strip()
+    elif len(parts) == 3:
+        value = parts[0].strip()
+        from_alias = parts[1].strip()
+        to_alias = parts[2].strip()
+    else:
+        return "Invalid format. Use: <value><unit> <unit>"
+
+    from_unit = UNIT_ALIASES.get(from_alias.lower(), from_alias)
+    to_unit = UNIT_ALIASES.get(to_alias.lower(), to_alias)
+
+    try:
+        result = ureg.Quantity(float(value), from_unit).to(to_unit)
+        num = result.magnitude
+        formatted = int(num) if num == int(num) else round(num, 8)
+        return f"{formatted} {to_unit}"
+    except Exception:
+        return "Incompatible units"
+
+
 def file_search(query, params=None):
-    global _rapidfuzz
     if params is None:
         params = {}
     ext = params.get("e")
@@ -363,7 +453,7 @@ def file_search(query, params=None):
             for name in dirnames + filenames:
                 if ext and not name.endswith(ext):
                     continue
-                score = _rapidfuzz.ratio(query, name) / 100  # type: ignore
+                score = fuzz.ratio(query, name) / 100  # type: ignore
                 if (
                     score
                     >= 0.4  # Change this number for how many results to find. 0-1 and lower mens more results are valid
@@ -378,9 +468,6 @@ def file_search(query, params=None):
         cancel_event.clear()
         Thread(target=run_search, daemon=True).start()
 
-    from rapidfuzz import fuzz as _fuzz
-
-    _rapidfuzz = _fuzz
     root.after(100, delayed_start)
 
 
@@ -612,10 +699,11 @@ def launch_app(desktop_file):
 
 
 def open_file(path):
-    if path.isfile(path):
-        subprocess.Popen(["xdg-open", path.dirname(path)], stderr=subprocess.DEVNULL)
+    p = Path(path)
+    if p.is_file():
+        subprocess.Popen(["xdg-open", str(p.parent)], stderr=subprocess.DEVNULL)
     else:
-        subprocess.Popen(["xdg-open", path], stderr=subprocess.DEVNULL)
+        subprocess.Popen(["xdg-open", str(p)], stderr=subprocess.DEVNULL)
 
 
 def truncate_with_ellipsis(text, max_width):
