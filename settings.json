@@ -40,5 +40,5 @@
         }
     },
     "max_results": 50,
-    "terminal": "kitty"
+    "terminal": "default"
 }

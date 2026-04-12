@@ -193,24 +193,24 @@ def main(*args):
     query = search_var.get()
     command, command_input, params = parse_query(query)
 
+    result_map = {
+        RUN_CMD_CMD: "Press ENTER to run command...",
+        SYS_CMD_CMD: "Press ENTER to run system command...",
+        HELP_CMD: HELP_TEXT,
+    }
+
     if command == CALCULATOR_CMD:
         update_result(f"= {calculator(command_input)}")
     elif command == WEB_SEARCH_CMD:
-        result = web_search()
-        update_result(result)
+        update_result(web_search())
     elif command == FILE_SEARCH_CMD:
         file_search(command_input, params)
     elif command == APP_SEARCH_CMD:
         app_search(command_input)
-    elif command == RUN_CMD_CMD:
-        update_result("Press ENTER to run command...")
-    elif command == SYS_CMD_CMD:
-        update_result("Press ENTER to run system command...")
-    elif command == HELP_CMD:
-        update_result(HELP_TEXT)
+    elif command in result_map:
+        update_result(result_map[command])
     else:
-        result = "Type the command..."
-        update_result(result)
+        update_result("Type the command...")
 
 
 def on_enter():
@@ -290,7 +290,10 @@ def file_search(query, params=None):
                 if ext and not name.endswith(ext):
                     continue
                 score = rapidfuzz.fuzz.ratio(query, name) / 100
-                if score >= 0.4:
+                if (
+                    score
+                    >= 0.4  # Change this number for how many results to find. 0-1 and lower mens more results are valid
+                ):
                     scored_results.append((str(Path(dirpath) / name), score))
 
         scored_results.sort(key=lambda x: x[1], reverse=True)
@@ -321,8 +324,8 @@ def parse_query(query):
     command = query[0]
     query = query[1:].strip()
 
+    params = {}
     if command != RUN_CMD_CMD:
-        params = {}
         for match in re.finditer(r"-(\w+)\s+(\S+)", query):
             params[match.group(1)] = match.group(2)
         for match in re.finditer(r"-(\w+)(?!\s+\S)", query):
@@ -332,7 +335,6 @@ def parse_query(query):
         command_input = re.sub(r"-\w+(?:\s+\S+)?\s*", "", query).strip()
     else:
         command_input = query
-        params = {}
 
     return (command, command_input, params)
 
