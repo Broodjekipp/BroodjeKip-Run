@@ -1,6 +1,5 @@
 """
 TODO
--`-d` param in file search for search depth limiting
 -command history
 """
 
