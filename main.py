@@ -73,7 +73,7 @@ JSON_DEFAULT = {
 def load_settings():
     try:
         with open(CONFIG_PATH) as f:
-            return {**JSON_DEFAULT, **json.load(f)}
+            return deep_update(JSON_DEFAULT.copy(), json.load(f))
     except Exception:
         with open(CONFIG_PATH, "w") as f:
             json.dump(JSON_DEFAULT, f, indent=2)
@@ -98,7 +98,7 @@ CALCULATOR_CMD = settings.get("commands", {}).get("calculator", "=")
 CONVERTER_CMD = settings.get("commands", {}).get("converter", "c")
 WEB_SEARCH_CMD = settings.get("commands", {}).get("web_search", "?")
 FILE_SEARCH_CMD = settings.get("commands", {}).get("file_search", "f")
-APP_SEARCH_CMD = settings.get("commands", {}).get("app_search", "@")
+APP_SEARCH_CMD = settings.get("commands", {}).get("app_search", "a")
 RUN_CMD_CMD = settings.get("commands", {}).get("run_command", ">")
 SYS_CMD_CMD = settings.get("commands", {}).get("system_command", "<")
 HELP_CMD = settings.get("commands", {}).get("help", "h")
@@ -269,7 +269,7 @@ Constants: pi, e, tau""",
     CONVERTER_CMD: f"""Unit converter [{CONVERTER_CMD}]
   Convert a unit to another.
 
-Useage:
+Usage:
   {CONVERTER_CMD} <value> <from unit> <to unit>
 
 Example:
@@ -325,7 +325,7 @@ result_items = []
 previous_command = ""
 
 
-def main(*args):
+def on_update(*args):
     global previous_command
     query = search_var.get()
     command, command_input, params = parse_query(query)
@@ -372,13 +372,13 @@ def on_enter():
         root.clipboard_clear()
         root.clipboard_append(str(result))
         root.update()
-        search_var.set(f"= {result}")
+        search_var.set(f"{CALCULATOR_CMD} {result}")
     elif command == CONVERTER_CMD:
         result = unit_convert(command_input)
         root.clipboard_clear()
         root.clipboard_append(str(result))
         root.update()
-        search_var.set(f"c {result}")
+        search_var.set(f"{CONVERTER_CMD} {result}")
     elif command == WEB_SEARCH_CMD:
         engine = params.get("w", DEFAULT_ENGINE)
         url = SEARCH_ENGINES.get(engine, SEARCH_ENGINES[DEFAULT_ENGINE])
@@ -456,7 +456,8 @@ def file_search(query, params=None):
         except ValueError:
             max_depth = None
 
-    cancel_event.set()
+    local_cancel = Event()
+    cancel_event = local_cancel
     update_result("Searching...")
 
     if not query:
@@ -468,7 +469,7 @@ def file_search(query, params=None):
         base_depth = len(path_to_search.parts)
 
         for dirpath, dirnames, filenames in walk(path_to_search):
-            if cancel_event.is_set():
+            if cancel_event is not local_cancel:
                 return
 
             current_path = Path(dirpath)
@@ -481,7 +482,7 @@ def file_search(query, params=None):
                 if ext and not name.endswith(ext):
                     continue
 
-                score = fuzz.ratio(query, name) / 100
+                score = fuzz.partial_ratio(query, name) / 100
                 if score >= 0.4:
                     scored_results.append((str(current_path / name), score))
 
@@ -512,7 +513,7 @@ def app_search(query):
     if not found_apps:
         update_result("No apps found.")
         return
-    max_items_without_scroll = MAX_RESULTS_HEIGHT // (FONT_HEIGHT + 16)
+    max_items_without_scroll = MAX_RESULTS_HEIGHT // RESULT_ITEM_HEIGHT
     if len(found_apps) > max_items_without_scroll:
         update_result(found_apps, is_scrollable=True, is_list=True, is_apps=True)
     else:
@@ -570,6 +571,7 @@ def update_result(
     else:
         item = make_result_item(container, results, is_files, is_apps)
         item.pack(fill="x")
+        item.update_idletasks()
 
     root.update_idletasks()
     center_window()
@@ -748,7 +750,9 @@ def truncate_with_ellipsis(text, max_width):
     if FONT_OBJ.measure(text) <= max_width:
         return text
     ellipsis_str = "..."
-    while text and FONT_OBJ.measure(ellipsis_str + text) > max_width - 40:
+    while (
+        text and FONT_OBJ.measure(ellipsis_str + text) > max_width - 40
+    ):  # -40 to give the text some extra breathing room
         text = text[1:]
     return ellipsis_str + text
 
@@ -775,6 +779,26 @@ def wrap_text(text, max_width):
     return "\n".join(lines)
 
 
+def get_item_height():
+    item = make_result_item(
+        root, "[GETTING ITEM HEIGHT]", is_apps=False, is_files=False
+    )
+    item.pack(fill="x")
+    item.update_idletasks()
+    height = item.winfo_height()
+    item.destroy()
+    return height
+
+
+def deep_update(default, custom):
+    for k, v in custom.items():
+        if isinstance(v, dict) and k in default:
+            deep_update(default[k], v)
+        else:
+            default[k] = v
+    return default
+
+
 def force_focus():
     root.focus_force()
     search_bar.focus_force()
@@ -792,11 +816,13 @@ def center_window():
     root.geometry(f"{WIDTH}x{height}+{x}+{y}")
 
 
+RESULT_ITEM_HEIGHT = get_item_height()
+
 update_result("Type h for help...")
 root.update_idletasks()
 APPS = load_apps()
 
-search_var.trace_add("write", main)
+search_var.trace_add("write", on_update)
 root.after(50, force_focus)
 center_window()
 

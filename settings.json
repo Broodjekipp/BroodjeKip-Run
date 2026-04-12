@@ -1,45 +1,46 @@
 {
-    "dimensions": {
-        "width": 500,
-        "search_height": 40,
-        "y_offset": 100,
-        "max_results_height": 300
-    },
-    "font": {"family": "JetBrains Mono", "height": 14},
-    "colors": {
-        "search_bar": "#2f2f2f",
-        "results": "#141414",
-        "text": "#d0d0d0",
-        "highlight": "#444444"
-    },
-    "commands": {
-        "calculator": "=",
-        "converter": "c",
-        "web_search": "?",
-        "file_search": "f",
-        "app_search": "@",
-        "run_command": ">",
-        "system_command": "<",
-        "help": "h"
-    },
-    "search": {
-        "default_search_path": "~",
-        "default_search_engine": "duckduckgo",
-        "search_engines": {
-            "google": "https://google.com/search?q=",
-            "duckduckgo": "https://duckduckgo.com/?q=",
-            "bing": "https://bing.com/search?q=",
-            "ecosia": "https://ecosia.org/search?q=",
-            "brave": "https://search.brave.com/search?q=",
-            "startpage": "https://startpage.com/search?q=",
-            "perplexity": "https://perplexity.ai/search?q=",
-            "youtube": "https://youtube.com/results?search_query=",
-            "wikipedia": "https://en.wikipedia.org/w/index.php?search=",
-            "reddit": "https://reddit.com/search/?q=",
-            "github": "https://github.com/search?q=",
-            "stackoverflow": "https://stackoverflow.com/search?q="
-        }
-    },
-    "max_results": 50,
-    "terminal": "kitty"
+  "dimensions": {
+    "width": 500,
+    "search_height": 40,
+    "y_offset": 100,
+    "max_results_height": 300
+  },
+  "font": {
+    "family": "JetBrains Mono",
+    "height": 14
+  },
+  "colors": {
+    "search_bar": "#2f2f2f",
+    "results": "#141414",
+    "text": "#d0d0d0",
+    "highlight": "#444444"
+  },
+  "commands": {
+    "calculator": "=",
+    "converter": "c",
+    "web_search": "?",
+    "file_search": "f",
+    "app_search": "a",
+    "run_command": ">",
+    "system_command": "<"
+  },
+  "search": {
+    "default_search_path": "~",
+    "default_search_engine": "duckduckgo",
+    "search_engines": {
+      "google": "https://google.com/search?q=",
+      "duckduckgo": "https://duckduckgo.com/?q=",
+      "bing": "https://bing.com/search?q=",
+      "ecosia": "https://ecosia.org/search?q=",
+      "brave": "https://search.brave.com/search?q=",
+      "startpage": "https://startpage.com/search?q=",
+      "perplexity": "https://perplexity.ai/search?q=",
+      "youtube": "https://youtube.com/results?search_query=",
+      "wikipedia": "https://en.wikipedia.org/w/index.php?search=",
+      "reddit": "https://reddit.com/search/?q=",
+      "github": "https://github.com/search?q=",
+      "stackoverflow": "https://stackoverflow.com/search?q="
+    }
+  },
+  "max_results": 50
 }
