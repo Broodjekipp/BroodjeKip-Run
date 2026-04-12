@@ -266,7 +266,7 @@ Functions: sqrt, log, log2, log10, sin, cos, tan,
            asin, acos, atan, ceil, floor, abs,
            round, pow, factorial
 Constants: pi, e, tau""",
-CONVERTER_CMD: f"""Unit converter [{CONVERTER_CMD}]
+    CONVERTER_CMD: f"""Unit converter [{CONVERTER_CMD}]
   Convert a unit to another.
 
 Useage:
@@ -488,7 +488,12 @@ def file_search(query, params=None):
         scored_results.sort(key=lambda x: x[1], reverse=True)
         results = [path for path, _ in scored_results[:MAX_RESULTS]]
         if results:
-            root.after(0, lambda: update_result(results, is_list=True, is_files=True))
+            root.after(
+                0,
+                lambda: update_result(
+                    results, is_scrollable=True, is_list=True, is_files=True
+                ),
+            )
         else:
             root.after(0, lambda: update_result("No files found"))
 
@@ -509,9 +514,9 @@ def app_search(query):
         return
     max_items_without_scroll = MAX_RESULTS_HEIGHT // (FONT_HEIGHT + 16)
     if len(found_apps) > max_items_without_scroll:
-        update_result(found_apps, is_list=True, is_apps=True)
+        update_result(found_apps, is_scrollable=True, is_list=True, is_apps=True)
     else:
-        update_result(found_apps, is_apps=True)
+        update_result(found_apps, is_list=True, is_apps=True)
 
 
 def parse_query(query):
@@ -536,7 +541,9 @@ def parse_query(query):
     return (command, command_input, params)
 
 
-def update_result(results=None, is_list=False, is_files=False, is_apps=False):
+def update_result(
+    results=None, is_scrollable=False, is_list=False, is_files=False, is_apps=False
+):
     global selected_index, result_frame, result_canvas
 
     result_items.clear()
@@ -549,7 +556,7 @@ def update_result(results=None, is_list=False, is_files=False, is_apps=False):
         root.geometry(f"{WIDTH}x{SEARCH_HEIGHT}")
         return
 
-    if is_list:
+    if is_scrollable:
         inner_frame, result_canvas = make_scrollable_frame(result_frame)
         container = inner_frame
     else:
