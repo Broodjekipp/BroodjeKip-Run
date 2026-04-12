@@ -278,7 +278,7 @@ def main(*args):
     elif command == APP_SEARCH_CMD:
         app_search(command_input)
     elif command == HELP_CMD:
-        update_result(HELP_TEXT[command_input])
+        update_result(HELP_TEXT.get(command_input, "Invalid command name."))
 
     elif command in result_map:
         if command != previous_command:
@@ -419,115 +419,31 @@ def parse_query(query):
 
 def update_result(results=None, is_list=False, is_files=False, is_apps=False):
     global selected_index, result_frame, result_canvas
+
     result_items.clear()
     selected_index = -1
     result_frame.destroy()
+    result_frame = tk.Frame(root, bg=RESULTS_COLOR)
+    result_frame.pack(fill="both", expand=True)
 
-    if results == None:
+    if results is None:
         root.geometry(f"{WIDTH}x{SEARCH_HEIGHT}")
         return
 
     if is_list:
-        result_frame = tk.Frame(root, bg=RESULTS_COLOR)
-        result_frame.pack(fill="both", expand=True)
-
-        global canvas
-        canvas = tk.Canvas(result_frame, bg=RESULTS_COLOR)
-        result_canvas = canvas
-        scrollbar = tk.Scrollbar(
-            result_frame, orient="vertical", command=canvas.yview, bg=SEARCH_BAR_COLOR
-        )
-        inner_frame = tk.Frame(canvas, bg=RESULTS_COLOR)
-
-        def on_frame_configure(e):
-            canvas.configure(scrollregion=canvas.bbox("all"))
-            canvas.configure(height=min(e.height, MAX_RESULTS_HEIGHT))
-
-        inner_frame.bind("<Configure>", on_frame_configure)
-        canvas.create_window((0, 0), window=inner_frame, anchor="nw")
-
-        def on_canvas_configure(e):
-            canvas.itemconfig(canvas.find_all()[0], width=e.width)
-
-        canvas.bind("<Configure>", on_canvas_configure)
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-
-        for result in results[:MAX_RESULTS]:
-            if is_files:
-                item = tk.Button(
-                    inner_frame,
-                    text=truncate_with_ellipsis(result, WIDTH),
-                    font=FONT,
-                    command=lambda path=result: open_file(path),
-                    anchor="w",
-                    justify="left",
-                    fg=TEXT_COLOR,
-                    bg=RESULTS_COLOR,
-                )
-                result_items.append(item)
-            elif is_apps:
-                name, executable, icon_name = result
-                photo = load_icon(icon_name)
-                item = tk.Button(
-                    inner_frame,
-                    text=truncate_with_ellipsis(name, WIDTH),
-                    font=FONT,
-                    command=lambda e=executable: launch_app(e),
-                    anchor="w",
-                    justify="left",
-                    fg=TEXT_COLOR,
-                    bg=RESULTS_COLOR,
-                    **({"image": photo, "compound": "left"} if photo else {}),
-                )
-                item.image = photo  # type: ignore
-                result_items.append(item)
-            else:
-                item = tk.Label(
-                    inner_frame,
-                    text=result,
-                    font=FONT,
-                    anchor="w",
-                    justify="left",
-                    fg=TEXT_COLOR,
-                    bg=RESULTS_COLOR,
-                )
-
-            item.pack(fill="x")
-
+        inner_frame, result_canvas = make_scrollable_frame(result_frame)
+        container = inner_frame
     else:
-        result_frame = tk.Frame(root)
-        result_frame.pack(fill="x")
-        if is_apps:
-            for result in results[:MAX_RESULTS]:
-                name, executable, icon_name = result
-                photo = load_icon(icon_name)
-                item = tk.Button(
-                    result_frame,
-                    text=truncate_with_ellipsis(name, WIDTH),
-                    font=FONT,
-                    command=lambda e=executable: launch_app(e),
-                    anchor="w",
-                    justify="left",
-                    fg=TEXT_COLOR,
-                    bg=RESULTS_COLOR,
-                    **({"image": photo, "compound": "left"} if photo else {}),
-                )
-                item.image = photo  # type: ignore
-                result_items.append(item)
-                item.pack(fill="x")
-        else:
-            item = tk.Label(
-                result_frame,
-                text=wrap_text(str(results), WIDTH),
-                font=FONT,
-                anchor="w",
-                justify="left",
-                fg=TEXT_COLOR,
-                bg=RESULTS_COLOR,
-            )
+        container = result_frame
+        result_canvas = result_frame
+
+    if is_list:
+        for result in results[:MAX_RESULTS]:
+            item = make_result_item(container, result, is_files, is_apps)
             item.pack(fill="x")
+    else:
+        item = make_result_item(container, results, is_files, is_apps)
+        item.pack(fill="x")
 
     root.update_idletasks()
     center_window()
@@ -535,6 +451,73 @@ def update_result(results=None, is_list=False, is_files=False, is_apps=False):
     if result_items and search_var.get().strip():
         selected_index = 0
         update_selection()
+
+
+def make_result_item(parent, result, is_files, is_apps):
+    if is_files:
+        item = tk.Button(
+            parent,
+            text=truncate_with_ellipsis(result, WIDTH),
+            font=FONT,
+            command=lambda path=result: open_file(path),
+            anchor="w",
+            justify="left",
+            fg=TEXT_COLOR,
+            bg=RESULTS_COLOR,
+        )
+        result_items.append(item)
+        return item
+    elif is_apps:
+        name, executable, icon_name = result
+        photo = load_icon(icon_name)
+        item = tk.Button(
+            parent,
+            text=truncate_with_ellipsis(name, WIDTH),
+            font=FONT,
+            command=lambda e=executable: launch_app(e),
+            anchor="w",
+            justify="left",
+            fg=TEXT_COLOR,
+            bg=RESULTS_COLOR,
+            **({"image": photo, "compound": "left"} if photo else {}),
+        )
+        item.image = photo  # type: ignore
+        result_items.append(item)
+        return item
+    else:
+        return tk.Label(
+            parent,
+            text=wrap_text(str(result), WIDTH),
+            font=FONT,
+            anchor="w",
+            justify="left",
+            fg=TEXT_COLOR,
+            bg=RESULTS_COLOR,
+        )
+
+
+def make_scrollable_frame(parent):
+    cv = tk.Canvas(parent, bg=RESULTS_COLOR)
+    scrollbar = tk.Scrollbar(
+        parent, orient="vertical", command=cv.yview, bg=SEARCH_BAR_COLOR
+    )
+    inner_frame = tk.Frame(cv, bg=RESULTS_COLOR)
+
+    def on_frame_configure(e):
+        cv.configure(scrollregion=cv.bbox("all"))
+        cv.configure(height=min(e.height, MAX_RESULTS_HEIGHT))
+
+    def on_canvas_configure(e):
+        cv.itemconfig(cv.find_all()[0], width=e.width)
+
+    inner_frame.bind("<Configure>", on_frame_configure)
+    cv.create_window((0, 0), window=inner_frame, anchor="nw")
+    cv.bind("<Configure>", on_canvas_configure)
+    cv.configure(yscrollcommand=scrollbar.set)
+    cv.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
+
+    return inner_frame, cv
 
 
 def update_selection():
