@@ -26,7 +26,7 @@ require_version("Gtk", "3.0")
 from gi.repository import Gtk  # type: ignore
 
 CONFIG_PATH = Path.home() / ".config" / "broodjekip-run" / "settings.json"
-json_default = {
+JSON_DEFAULT = {
     "dimensions": {
         "width": 500,
         "search_height": 40,
@@ -42,6 +42,7 @@ json_default = {
     },
     "commands": {
         "calculator": "=",
+        "converter": "c",
         "web_search": "?",
         "file_search": "f",
         "app_search": "a",
@@ -73,11 +74,11 @@ json_default = {
 def load_settings():
     try:
         with open(CONFIG_PATH) as f:
-            return {**json_default, **json.load(f)}
+            return {**JSON_DEFAULT, **json.load(f)}
     except Exception:
         with open(CONFIG_PATH, "w") as f:
-            json.dump(json_default, f, indent=2)
-            return json_default
+            json.dump(JSON_DEFAULT, f, indent=2)
+            return JSON_DEFAULT
 
 
 settings = load_settings()
@@ -236,11 +237,12 @@ Usage:
   {FILE_SEARCH_CMD} <query>
   {FILE_SEARCH_CMD} -e <ext> <query>
   {FILE_SEARCH_CMD} -p <path> <query>
+  {FILE_SEARCH_CMD} -d <depth> <query>
 
 Examples:
   `{FILE_SEARCH_CMD} wallpaper`           search in {SEARCH_PATH}
   `{FILE_SEARCH_CMD} -e png wallpaper`    only .png files
-  `{FILE_SEARCH_CMD} -p ~/docs report`    search in ~/docs""",
+  `{FILE_SEARCH_CMD} -p ~/docs -d 3 report`    search in ~/docs with a depth of 3""",
     APP_SEARCH_CMD: f"""App search [{APP_SEARCH_CMD}]
   Search installed applications.
 
@@ -265,6 +267,17 @@ Functions: sqrt, log, log2, log10, sin, cos, tan,
            asin, acos, atan, ceil, floor, abs,
            round, pow, factorial
 Constants: pi, e, tau""",
+CONVERTER_CMD: f"""Unit converter [{CONVERTER_CMD}]
+  Convert a unit to another.
+
+Useage:
+  {CONVERTER_CMD} <value> <from unit> <to unit>
+
+Example:
+  `{CONVERTER_CMD} 40 c f`
+
+Allowed units:
+  {", ".join(UNIT_ALIASES.keys())}""",
     RUN_CMD_CMD: f"""Run command [{RUN_CMD_CMD}]
   Run a shell command in a terminal window.
 
@@ -437,6 +450,12 @@ def file_search(query, params=None):
     path_to_search = Path(p if isinstance(p, str) else SEARCH_PATH).expanduser()
     if ext and not ext.startswith("."):
         ext = f".{ext}"
+    max_depth = params.get("d")
+    if max_depth is not None:
+        try:
+            max_depth = int(max_depth)
+        except ValueError:
+            max_depth = None
 
     cancel_event.set()
     update_result("Searching...")
@@ -447,22 +466,32 @@ def file_search(query, params=None):
 
     def run_search():
         scored_results = []
+        base_depth = len(path_to_search.parts)
+
         for dirpath, dirnames, filenames in walk(path_to_search):
             if cancel_event.is_set():
                 return
+
+            current_path = Path(dirpath)
+            current_depth = len(current_path.parts) - base_depth
+
+            if max_depth is not None and current_depth >= max_depth:
+                dirnames[:] = []
+
             for name in dirnames + filenames:
                 if ext and not name.endswith(ext):
                     continue
-                score = fuzz.ratio(query, name) / 100  # type: ignore
-                if (
-                    score
-                    >= 0.4  # Change this number for how many results to find. 0-1 and lower mens more results are valid
-                ):
-                    scored_results.append((str(Path(dirpath) / name), score))
+
+                score = fuzz.ratio(query, name) / 100
+                if score >= 0.4:
+                    scored_results.append((str(current_path / name), score))
 
         scored_results.sort(key=lambda x: x[1], reverse=True)
         results = [path for path, _ in scored_results[:MAX_RESULTS]]
-        root.after(0, lambda: update_result(results, is_list=True, is_files=True))
+        if results:
+            root.after(0, lambda: update_result(results, is_list=True, is_files=True))
+        else:
+            root.after(0, lambda: update_result("No files found"))
 
     def delayed_start():
         cancel_event.clear()
