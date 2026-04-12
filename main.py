@@ -1,22 +1,20 @@
 from decimal import Decimal, ROUND_HALF_UP
+from gi import require_version
 from webbrowser import open as webopen
+from threading import Thread, Event
+from os import system, walk, path
 from PIL import Image, ImageTk
 from urllib.parse import quote
 from pathlib import Path
 import tkinter.font as tkfont
 import tkinter as tk
 import subprocess
-import threading
-import rapidfuzz
-import cairosvg
 import math
 import json
-import os
 import re
-import gi
 import io
 
-gi.require_version("Gtk", "3.0")
+require_version("Gtk", "3.0")
 from gi.repository import Gtk  # type: ignore
 
 CONFIG_PATH = Path.home() / ".config" / "broodjekip-run" / "settings.json"
@@ -253,7 +251,9 @@ search_bar.pack(fill="x")
 result_frame = tk.Canvas(root, bg=RESULTS_COLOR)
 result_canvas = None
 
-cancel_event = threading.Event()  # For file_search
+cancel_event = Event()  # For file_search
+_cairosvg = None
+_rapidfuzz = None
 
 selected_index = -1
 result_items = []
@@ -315,11 +315,11 @@ def on_enter():
         subprocess.Popen([TERMINAL, "-e", "bash", "-c", f"{command_input}; exec bash"])
     elif command == SYS_CMD_CMD:
         if command_input in ("r", "restart"):
-            os.system("systemctl reboot")
+            system("systemctl reboot")
         elif command_input in ("s", "shutdown"):
-            os.system("systemctl poweroff")
+            system("systemctl poweroff")
         elif command_input in ("l", "logout"):
-            os.system("loginctl terminate-session $XDG_SESSION_ID")
+            system("loginctl terminate-session $XDG_SESSION_ID")
         else:
             update_result("Command not found.")
 
@@ -337,6 +337,7 @@ def calculator(input):
 
 
 def file_search(query, params=None):
+    global _rapidfuzz
     if params is None:
         params = {}
     ext = params.get("e")
@@ -356,13 +357,13 @@ def file_search(query, params=None):
 
     def run_search():
         scored_results = []
-        for dirpath, dirnames, filenames in os.walk(path_to_search):
+        for dirpath, dirnames, filenames in walk(path_to_search):
             if cancel_event.is_set():
                 return
             for name in dirnames + filenames:
                 if ext and not name.endswith(ext):
                     continue
-                score = rapidfuzz.fuzz.ratio(query, name) / 100
+                score = _rapidfuzz.ratio(query, name) / 100  # type: ignore
                 if (
                     score
                     >= 0.4  # Change this number for how many results to find. 0-1 and lower mens more results are valid
@@ -375,8 +376,11 @@ def file_search(query, params=None):
 
     def delayed_start():
         cancel_event.clear()
-        threading.Thread(target=run_search, daemon=True).start()
+        Thread(target=run_search, daemon=True).start()
 
+    from rapidfuzz import fuzz as _fuzz
+
+    _rapidfuzz = _fuzz
     root.after(100, delayed_start)
 
 
@@ -581,6 +585,7 @@ def load_apps():
 
 
 def load_icon(icon_name, size=16):
+    global _cairosvg
     if not icon_name:
         return None
     path = find_icon(icon_name, size)
@@ -588,7 +593,10 @@ def load_icon(icon_name, size=16):
         return None
     try:
         if path.endswith(".svg"):
-            png_data = cairosvg.svg2png(url=path, output_width=size, output_height=size)
+            from cairosvg import svg2png as _svg2png
+
+            _cairosvg = _svg2png
+            png_data = _cairosvg(url=path, output_width=size, output_height=size)
             assert png_data
             img = Image.open(io.BytesIO(png_data)).convert("RGBA")
         else:
@@ -604,8 +612,8 @@ def launch_app(desktop_file):
 
 
 def open_file(path):
-    if os.path.isfile(path):
-        subprocess.Popen(["xdg-open", os.path.dirname(path)], stderr=subprocess.DEVNULL)
+    if path.isfile(path):
+        subprocess.Popen(["xdg-open", path.dirname(path)], stderr=subprocess.DEVNULL)
     else:
         subprocess.Popen(["xdg-open", path], stderr=subprocess.DEVNULL)
 
@@ -664,7 +672,9 @@ def center_window():
 update_result("Type h for help...")
 root.update_idletasks()
 APPS = load_apps()
+
 search_var.trace_add("write", main)
 root.after(50, force_focus)
 center_window()
+
 root.mainloop()
