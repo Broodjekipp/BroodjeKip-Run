@@ -2,7 +2,7 @@
     "dimensions": {
         "width": 500,
         "search_height": 40,
-        "y_offset": -50,
+        "y_offset": 100,
         "max_results_height": 300
     },
     "font": {"family": "JetBrains Mono", "height": 14},
@@ -40,5 +40,5 @@
         }
     },
     "max_results": 50,
-    "terminal": "default"
+    "terminal": "kitty"
 }

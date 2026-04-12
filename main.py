@@ -24,7 +24,7 @@ json_default = {
     "dimensions": {
         "width": 500,
         "search_height": 40,
-        "y_offset": -50,
+        "y_offset": 100,
         "max_results_height": 300,
     },
     "font": {"family": "JetBrains Mono", "height": 14},
@@ -77,7 +77,7 @@ settings = load_settings()
 # Configurable constants
 WIDTH = settings.get("dimensions", {}).get("width", 500)
 SEARCH_HEIGHT = settings.get("dimensions", {}).get("search_height", 40)
-HEIGHT_OFFSET = settings.get("dimensions", {}).get("y_offset", -50)
+HEIGHT_OFFSET = settings.get("dimensions", {}).get("y_offset", 100)
 MAX_RESULTS_HEIGHT = settings.get("dimensions", {}).get("max_results_height", 300)
 FONT_FAMILY = settings.get("font", {}).get("family", "DejaVu Sans Mono")
 FONT_HEIGHT = settings.get("font", {}).get("height", 14)
@@ -145,24 +145,94 @@ MATH_NAMESPACE = {
     "e": math.e,
     "tau": math.tau,
 }
-HELP_TEXT = f"""Basic structure: 
-<command> <parameters> <input>
-e.g. {WEB_SEARCH_CMD} -w wikipedia tkinter
+HELP_TEXT = {
+    "": f"""Commands:
+  {HELP_CMD}          Help
+  {WEB_SEARCH_CMD}          Web search
+  {FILE_SEARCH_CMD}          File search
+  {APP_SEARCH_CMD}          App search
+  {CALCULATOR_CMD}          Calculator
+  {RUN_CMD_CMD}          Run command (in terminal)
+  {SYS_CMD_CMD}          System command
 
-Calculator:     {CALCULATOR_CMD}
-    Allows math expressions:
-      = log2(tau ** sqrt(2))
-Web search:     {WEB_SEARCH_CMD}
-    -w : Choose search engine
-File search:    {FILE_SEARCH_CMD}
-    -e : Search by extension
-    -p : Search in path
-App search:     {APP_SEARCH_CMD}
-Run command:    {RUN_CMD_CMD}
-System command: {SYS_CMD_CMD}
-    r  : Restart
-    s  : Shutdown
-    l  : Logout"""
+Type `{HELP_CMD} <command>` for detailed info.""",
+    HELP_CMD: f"""Help [{HELP_CMD}]
+  Display usage info for a command.
+
+Usage:
+  {HELP_CMD} <command>
+
+Example:
+  `{HELP_CMD} {WEB_SEARCH_CMD}`  web search help
+  `{HELP_CMD} {FILE_SEARCH_CMD}`  file search help""",
+    WEB_SEARCH_CMD: f"""Web search [{WEB_SEARCH_CMD}]
+  Search the web using your default browser.
+
+Usage:
+  {WEB_SEARCH_CMD} <query>
+  {WEB_SEARCH_CMD} -w <engine> <query>
+
+Examples:
+  `{WEB_SEARCH_CMD} tkinter`           uses {DEFAULT_ENGINE}
+  `{WEB_SEARCH_CMD} -w youtube cats`   searches YouTube
+
+Engines: {", ".join(SEARCH_ENGINES.keys())}""",
+    FILE_SEARCH_CMD: f"""File search [{FILE_SEARCH_CMD}]
+  Fuzzy search for files and directories.
+
+Usage:
+  {FILE_SEARCH_CMD} <query>
+  {FILE_SEARCH_CMD} -e <ext> <query>
+  {FILE_SEARCH_CMD} -p <path> <query>
+
+Examples:
+  `{FILE_SEARCH_CMD} wallpaper`           search in {SEARCH_PATH}
+  `{FILE_SEARCH_CMD} -e png wallpaper`    only .png files
+  `{FILE_SEARCH_CMD} -p ~/docs report`    search in ~/docs""",
+    APP_SEARCH_CMD: f"""App search [{APP_SEARCH_CMD}]
+  Search installed applications.
+
+Usage:
+  {APP_SEARCH_CMD} <query>
+
+Example:
+  `{APP_SEARCH_CMD} fire`  matches Firefox, etc.""",
+    CALCULATOR_CMD: f"""Calculator [{CALCULATOR_CMD}]
+  Evaluate math expressions.
+  Press ENTER to copy the result.
+
+Usage:
+  {CALCULATOR_CMD} <expression>
+
+Examples:
+  `{CALCULATOR_CMD} 2 + 2`
+  `{CALCULATOR_CMD} sqrt(144)`
+  `{CALCULATOR_CMD} sin(pi / 2)`
+
+Functions: sqrt, log, log2, log10, sin, cos, tan,
+           asin, acos, atan, ceil, floor, abs,
+           round, pow, factorial
+Constants: pi, e, tau""",
+    RUN_CMD_CMD: f"""Run command [{RUN_CMD_CMD}]
+  Run a shell command in a terminal window.
+
+Usage:
+  {RUN_CMD_CMD} <command>
+
+Example:
+  `{RUN_CMD_CMD} python3 script.py`""",
+    SYS_CMD_CMD: f"""System command [{SYS_CMD_CMD}]
+  Perform a system action.
+
+Usage:
+  {SYS_CMD_CMD} <action>
+
+Actions:
+  r / restart    Reboot
+  s / shutdown   Power off
+  l / logout     Log out""",
+}
+
 
 root = tk.Tk()
 root.title("BroodjeKip Run")
@@ -187,30 +257,37 @@ cancel_event = threading.Event()  # For file_search
 
 selected_index = -1
 result_items = []
+previous_command = ""
 
 
 def main(*args):
+    global previous_command
     query = search_var.get()
     command, command_input, params = parse_query(query)
 
     result_map = {
         RUN_CMD_CMD: "Press ENTER to run command...",
         SYS_CMD_CMD: "Press ENTER to run system command...",
-        HELP_CMD: HELP_TEXT,
+        WEB_SEARCH_CMD: "Press ENTER to search...",
     }
 
     if command == CALCULATOR_CMD:
         update_result(f"= {calculator(command_input)}")
-    elif command == WEB_SEARCH_CMD:
-        update_result(web_search())
     elif command == FILE_SEARCH_CMD:
         file_search(command_input, params)
     elif command == APP_SEARCH_CMD:
         app_search(command_input)
+    elif command == HELP_CMD:
+        update_result(HELP_TEXT[command_input])
+
     elif command in result_map:
-        update_result(result_map[command])
-    else:
+        if command != previous_command:
+            update_result(result_map[command])
+    elif command == "":
         update_result("Type the command...")
+    else:
+        update_result("Invalid command...")
+    previous_command = command
 
 
 def on_enter():
@@ -257,10 +334,6 @@ def calculator(input):
         result = "Invalid expression"
 
     return result
-
-
-def web_search():
-    return "Press ENTER to search..."
 
 
 def file_search(query, params=None):
@@ -423,7 +496,7 @@ def update_result(results=None, is_list=False, is_files=False, is_apps=False):
         result_frame.pack(fill="x")
         item = tk.Label(
             result_frame,
-            text=str(results),
+            text=wrap_text(str(results), WIDTH),
             font=FONT,
             anchor="w",
             justify="left",
@@ -433,7 +506,7 @@ def update_result(results=None, is_list=False, is_files=False, is_apps=False):
         item.pack(fill="x")
 
     root.update_idletasks()
-    root.geometry(f"{WIDTH}x{root.winfo_reqheight()}")
+    center_window()
 
     if result_items and search_var.get().strip():
         selected_index = 0
@@ -536,9 +609,31 @@ def truncate_with_ellipsis(text, max_width):
     if FONT_OBJ.measure(text) <= max_width:
         return text
     ellipsis_str = "..."
-    while text and FONT_OBJ.measure(ellipsis_str + text) + 40 > max_width:
+    while text and FONT_OBJ.measure(ellipsis_str + text) > max_width - 40:
         text = text[1:]
     return ellipsis_str + text
+
+
+def wrap_text(text, max_width):
+    global FONT_OBJ
+    if FONT_OBJ is None:
+        FONT_OBJ = tkfont.Font(family=FONT_FAMILY, size=FONT_HEIGHT)
+
+    lines = []
+    for paragraph in text.split("\n"):
+        words = paragraph.split(" ")
+        current = ""
+        for word in words:
+            test = current + (" " if current else "") + word
+            if FONT_OBJ.measure(test) > max_width - 40:
+                if current:
+                    lines.append(current)
+                current = word
+            else:
+                current = test
+        lines.append(current)
+
+    return "\n".join(lines)
 
 
 def force_focus():
@@ -547,17 +642,22 @@ def force_focus():
 
 
 def center_window():
+    root.update_idletasks()
     screen_w = root.winfo_screenwidth()
     screen_h = root.winfo_screenheight()
-    root.geometry(
-        f"{WIDTH}x{SEARCH_HEIGHT}+{(screen_w - WIDTH) // 2}+{(screen_h - SEARCH_HEIGHT) // 2 + HEIGHT_OFFSET}"
-    )
+    height = root.winfo_reqheight()
 
+    x = (screen_w - WIDTH) // 2
+    y = (screen_h - SEARCH_HEIGHT) // 2 - HEIGHT_OFFSET
 
+    root.geometry(f"{WIDTH}x{height}+{x}+{y}")
+
+print(HEIGHT_OFFSET)
+
+update_result("Type h for help...")
 root.update_idletasks()
-root.geometry(f"{WIDTH}x{root.winfo_reqheight()}")
 APPS = load_apps()
-center_window()
 search_var.trace_add("write", main)
 root.after(50, force_focus)
+center_window()
 root.mainloop()
