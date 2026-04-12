@@ -194,8 +194,7 @@ def main(*args):
     command, command_input, params = parse_query(query)
 
     if command == CALCULATOR_CMD:
-        result = f"= {calculator(command_input)}"
-        update_result(result)
+        update_result(f"= {calculator(command_input)}")
     elif command == WEB_SEARCH_CMD:
         result = web_search()
         update_result(result)
@@ -215,7 +214,6 @@ def main(*args):
 
 
 def on_enter():
-
     global selected_index
 
     if 0 <= selected_index < len(result_items):
@@ -549,7 +547,7 @@ def force_focus():
 def center_window():
     screen_w = root.winfo_screenwidth()
     screen_h = root.winfo_screenheight()
-    root.geometry( 
+    root.geometry(
         f"{WIDTH}x{SEARCH_HEIGHT}+{(screen_w - WIDTH) // 2}+{(screen_h - SEARCH_HEIGHT) // 2 + HEIGHT_OFFSET}"
     )
 
