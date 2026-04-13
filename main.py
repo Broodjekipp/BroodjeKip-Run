@@ -8,6 +8,9 @@ from pint import UnitRegistry
 from os import system, walk
 from rapidfuzz import fuzz
 from pathlib import Path
+from Xlib import X, XK, display
+from Xlib.ext import record
+from Xlib.protocol import rq
 import tkinter.font as tkfont
 import tkinter as tk
 import subprocess
@@ -298,8 +301,8 @@ root.title("BroodjeKip Run")
 root.resizable(False, False)
 root.configure(bg=RESULTS_COLOR)
 root.bind("<Return>", lambda e: on_enter())
-root.bind("<Escape>", lambda e: root.destroy())
-root.bind("<FocusOut>", lambda e: root.destroy())
+root.bind("<Escape>", lambda e: root.withdraw())
+root.bind("<FocusOut>", lambda e: root.withdraw())
 root.bind("<Down>", lambda e: move_selection(1))
 root.bind("<Up>", lambda e: move_selection(-1))
 
@@ -364,16 +367,10 @@ def on_enter():
 
     if command == CALCULATOR_CMD:
         result = calculator(command_input)
-        root.clipboard_clear()
-        root.clipboard_append(str(result))
-        root.update()
-        search_var.set(f"{CALCULATOR_CMD} {result}")
+        copy_to_clipboard(result, CALCULATOR_CMD)
     elif command == CONVERTER_CMD:
         result = unit_convert(command_input)
-        root.clipboard_clear()
-        root.clipboard_append(str(result))
-        root.update()
-        search_var.set(f"{CONVERTER_CMD} {result}")
+        copy_to_clipboard(result, CONVERTER_CMD)
     elif command == WEB_SEARCH_CMD:
         engine = params.get("w", DEFAULT_ENGINE)
         url = SEARCH_ENGINES.get(engine, SEARCH_ENGINES[DEFAULT_ENGINE])
@@ -390,6 +387,17 @@ def on_enter():
             system("loginctl terminate-session $XDG_SESSION_ID")
         else:
             update_result("Command not found.")
+
+
+def copy_to_clipboard(copy_str, command_name=""):
+    root.clipboard_clear()
+    root.clipboard_append(str(copy_str))
+    root.update()
+    if command_name:
+        search_var.set(f"{command_name} {copy_str}")
+    else:
+        search_var.set(f"{copy_str}")
+    search_bar.icursor("end")
 
 
 def calculator(input):
@@ -811,6 +819,14 @@ def center_window():
     root.geometry(f"{WIDTH}x{height}+{x}+{y}")
 
 
+def listen_for_keypress():
+    while True:
+        event = keybind_display.next_event()
+        if event.type == X.KeyPress:
+            root.after(0, lambda: (root.deiconify(), force_focus()))
+            search_bar.select_range(0, "end")
+
+
 RESULT_ITEM_HEIGHT = get_item_height()
 
 update_result("Type h for help...")
@@ -821,4 +837,17 @@ search_var.trace_add("write", on_update)
 root.after(50, force_focus)
 center_window()
 
+keybind_display = display.Display()
+keybind_root = keybind_display.screen().root
+for mod in (0, X.Mod2Mask, X.LockMask, X.Mod2Mask | X.LockMask):
+    keybind_root.grab_key(
+        keybind_display.keysym_to_keycode(XK.XK_space),
+        X.Mod1Mask | mod,
+        True,
+        X.GrabModeAsync,
+        X.GrabModeAsync,
+    )
+
+
+Thread(target=listen_for_keypress, daemon=True).start()
 root.mainloop()
