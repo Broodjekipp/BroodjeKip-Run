@@ -4,13 +4,13 @@ from threading import Thread, Event
 from PIL import Image, ImageTk
 from gi import require_version
 from urllib.parse import quote
+from Xlib import X, XK, display
 from pint import UnitRegistry
+from cairosvg import svg2png
+from Xlib.protocol import rq
 from os import system, walk
 from rapidfuzz import fuzz
 from pathlib import Path
-from Xlib import X, XK, display
-from Xlib.ext import record
-from Xlib.protocol import rq
 import tkinter.font as tkfont
 import tkinter as tk
 import subprocess
@@ -316,7 +316,6 @@ result_frame = tk.Canvas(root, bg=RESULTS_COLOR)
 result_canvas = None
 
 cancel_event = Event()  # For file_search
-_cairosvg = None
 
 selected_index = -1
 result_items = []
@@ -712,7 +711,6 @@ def load_apps():
 
 
 def load_icon(icon_name, size=16):
-    global _cairosvg
     if not icon_name:
         return None
     path = find_icon(icon_name, size)
@@ -722,8 +720,7 @@ def load_icon(icon_name, size=16):
         if path.endswith(".svg"):
             from cairosvg import svg2png as _svg2png
 
-            _cairosvg = _svg2png
-            png_data = _cairosvg(url=path, output_width=size, output_height=size)
+            png_data = svg2png(url=path, output_width=size, output_height=size)
             assert png_data
             img = Image.open(io.BytesIO(png_data)).convert("RGBA")
         else:
