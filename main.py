@@ -1,8 +1,3 @@
-"""
-TODO
--command history
-"""
-
 from decimal import Decimal, ROUND_HALF_UP
 from webbrowser import open as webopen
 from threading import Thread, Event
@@ -199,13 +194,13 @@ UNIT_ALIASES = {
 }
 HELP_TEXT = {
     "": f"""Commands:
-  {HELP_CMD}          Help
-  {WEB_SEARCH_CMD}          Web search
-  {FILE_SEARCH_CMD}          File search
-  {APP_SEARCH_CMD}          App search
-  {CALCULATOR_CMD}          Calculator
-  {RUN_CMD_CMD}          Run command (in terminal)
-  {SYS_CMD_CMD}          System command
+  {HELP_CMD}    Help
+  {WEB_SEARCH_CMD}    Web search
+  {FILE_SEARCH_CMD}    File search
+  {APP_SEARCH_CMD}    App search
+  {CALCULATOR_CMD}    Calculator
+  {RUN_CMD_CMD}    Run command (in terminal)
+  {SYS_CMD_CMD}    System command
 
 Type `{HELP_CMD} <command>` for detailed info.""",
     HELP_CMD: f"""Help [{HELP_CMD}]
