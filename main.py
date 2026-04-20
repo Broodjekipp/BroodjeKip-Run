@@ -1,10 +1,10 @@
 from decimal import Decimal, ROUND_HALF_UP
 from webbrowser import open as webopen
 from threading import Thread, Event
+from Xlib import X, XK, display
 from PIL import Image, ImageTk
 from gi import require_version
 from urllib.parse import quote
-from Xlib import X, XK, display
 from pint import UnitRegistry
 from cairosvg import svg2png
 from Xlib.protocol import rq
@@ -260,9 +260,7 @@ Examples:
   `{CALCULATOR_CMD} sqrt(144)`
   `{CALCULATOR_CMD} sin(pi / 2)`
 
-Functions: sqrt, log, log2, log10, sin, cos, tan,
-           asin, acos, atan, ceil, floor, abs,
-           round, pow, factorial
+Functions: `sqrt, log, log2, log10, sin, cos, tan, asin, acos, atan, ceil, floor, abs, round, pow, factorial
 Constants: pi, e, tau""",
     CONVERTER_CMD: f"""Unit converter [{CONVERTER_CMD}]
   Convert a unit to another.
